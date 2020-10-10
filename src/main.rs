@@ -1,7 +1,6 @@
 use calamine::{open_workbook, DataType, Reader, Xlsx};
 use clap::{App, Arg};
 use lazy_static::lazy_static;
-use num_traits::pow;
 use regex::Regex;
 use std::collections::HashMap;
 
@@ -106,103 +105,121 @@ fn convert_comment_to_value(comment: &str) -> f64 {
         .collect::<Vec<_>>();
 
     let value = match v.get(0) {
-        None => return -1.0,
+        None => panic!("No component value to parse"),
         Some(v) => v,
     };
 
     lazy_static! {
-        static ref VAL: Regex = Regex::new(r"^([0-9.,]*)([GMkKRmunp])([0-9.,]*)").unwrap();
+        static ref VAL: Regex = Regex::new(r"^([0-9.,]*)([GMkKRmunp]?)([0-9.,]*)").unwrap();
     }
 
-    for cap in VAL.captures_iter(value) {
-        println!("{:?}", cap);
+    println!("{:?}", value);
+    match VAL.captures(value) {
+        None => panic!("Fail to parse component value"),
+        Some(cc) => {
+            let left = cc.get(1).map_or("", |m| m.as_str());
+            let mult = match cc.get(2).map_or("", |m| m.as_str()).as_ref() {
+                "G" => 1e12,
+                "M" => 1e6,
+                "k" | "K" => 1e3,
+                "R" | "" => 1.0,
+                "m" => 1e-3,
+                "u" => 1e-6,
+                "n" => 1e-9,
+                "p" => 1e-12,
+                _ => panic!("Invalid number"),
+            };
+            let right = cc.get(3).map_or("", |m| m.as_str());
+
+            let mut together;
+            let left = left.replace(",", ".");
+            let right = if right == "" { "0" } else { right };
+
+            together = format!("{}.{}", left, right);
+            if left.contains(".") {
+                together = format!("{}{}", left, right);
+            }
+
+            let base = match together.parse::<f64>() {
+                Err(error) => panic!(
+                    "Invalid base number for convertion from string value to float {:?}",
+                    error
+                ),
+                Ok(v) => v,
+            };
+
+            let num = format!("{:.1$}", base * mult, 15);
+
+            println!(
+                "{} >> l:{} r:{} -> n:{}, b*n:{}",
+                value,
+                left,
+                right,
+                num,
+                base * mult
+            );
+            match num.parse::<f64>() {
+                Err(error) => panic!(
+                    "Invalid base number for convertion from string value to float {:?}",
+                    error
+                ),
+                Ok(v) => v,
+            }
+        }
     }
-    0.0
 }
 
 #[test]
 fn test_convert_comment_to_value() {
-    struct TestData {
-        refs: &'static str,
-        val: f64,
-    }
-
-    let test_data = vec![
-        TestData {
-            refs: "100nF",
-            val: 100e-9,
-        },
-        TestData {
-            refs: "1R0",
-            val: 100e-9,
-        },
-        TestData {
-            refs: "1k",
-            val: 1e3,
-        },
-        TestData {
-            refs: "2k3",
-            val: 2300.0,
-        },
-        TestData {
-            refs: "4mH",
-            val: 4e-3,
-        },
-        TestData {
-            refs: "12MHZ",
-            val: 12e6,
-        },
-        TestData {
-            refs: "33nohm",
-            val: 12e6,
-        },
-        TestData {
-            refs: "100pF",
-            val: 12e6,
-        },
-        TestData {
-            refs: "1.1R",
-            val: 12e6,
-        },
-        TestData {
-            refs: "32.768kHz",
-            val: 12e6,
-        },
-        TestData {
-            refs: "12.134kHz",
-            val: 12e6,
-        },
-        TestData {
-            refs: "100uH",
-            val: 12e6,
-        },
-        TestData {
-            refs: "5K421",
-            val: 12e6,
-        },
-        TestData {
-            refs: "0.33R",
-            val: 12e6,
-        },
-        TestData {
-            refs: "2.2uH",
-            val: 12e6,
-        },
-        TestData {
-            refs: "0.3",
-            val: 12e6,
-        },
-        TestData {
-            refs: "4.7mH inductor",
-            val: 12e6,
-        },
-    ];
-
-    for data in test_data.iter() {
-        // assert_eq!(convert_comment_to_value(data.refs), data.val);
-        convert_comment_to_value(data.refs);
-    }
-    assert_eq!(0, 1);
+    assert_eq!(convert_comment_to_value("100nF"), 100e-9);
+    assert_eq!(convert_comment_to_value("1R0"), 1.0);
+    assert_eq!(convert_comment_to_value("1k"), 1e3);
+    assert_eq!(convert_comment_to_value("2k3"), 2300.0);
+    assert_eq!(convert_comment_to_value("4mH"), 4e-3);
+    assert_eq!(convert_comment_to_value("12MHZ"), 12e6);
+    assert_eq!(convert_comment_to_value("33nohm"), 33e-9);
+    assert_eq!(convert_comment_to_value("100pF"), 100e-12);
+    assert_eq!(convert_comment_to_value("1.1R"), 1.1);
+    assert_eq!(convert_comment_to_value("32.768kHz"), 32768.0);
+    assert_eq!(convert_comment_to_value("12.134kHz"), 12134.0);
+    assert_eq!(convert_comment_to_value("100uH"), 100e-6);
+    assert_eq!(convert_comment_to_value("5K421"), 5421.0);
+    assert_eq!(convert_comment_to_value("2.2uH"), 2.2e-6);
+    assert_eq!(convert_comment_to_value("0.3"), 0.3);
+    assert_eq!(convert_comment_to_value("4.7mH inductor"), 4.7e-3);
+    assert_eq!(convert_comment_to_value("0.33R"), 0.33);
+    assert_eq!(convert_comment_to_value("1R1"), 1.1);
+    assert_eq!(convert_comment_to_value("1R2"), 1.2);
+    assert_eq!(convert_comment_to_value("0R3"), 0.3);
+    assert_eq!(convert_comment_to_value("1R8"), 1.8);
+    assert_eq!(convert_comment_to_value("1.1R"), 1.1);
+    assert_eq!(convert_comment_to_value("1.2R"), 1.2);
+    assert_eq!(convert_comment_to_value("0.3R"), 0.3);
+    assert_eq!(convert_comment_to_value("1.8R"), 1.8);
+    assert_eq!(convert_comment_to_value("1k5"), 1500.0);
+    assert_eq!(convert_comment_to_value("1"), 1.0);
+    assert_eq!(convert_comment_to_value("10R"), 10.0);
+    assert_eq!(convert_comment_to_value("0.1uF"), 0.1e-6);
+    assert_eq!(convert_comment_to_value("1F"), 1.0);
+    assert_eq!(convert_comment_to_value("10pF"), 10e-12);
+    assert_eq!(convert_comment_to_value("47uF"), 47e-6);
+    assert_eq!(convert_comment_to_value("1uF"), 1e-6);
+    assert_eq!(convert_comment_to_value("1nH"), 1e-9);
+    assert_eq!(convert_comment_to_value("1H"), 1.0);
+    assert_eq!(convert_comment_to_value("10pH"), 10e-12);
+    assert_eq!(convert_comment_to_value("47uH"), 47e-6);
+    assert_eq!(convert_comment_to_value("68ohm"), 68.0);
+    assert_eq!(convert_comment_to_value("3.33R"), 3.33);
+    assert_eq!(convert_comment_to_value("0.12R"), 0.12);
+    assert_eq!(convert_comment_to_value("1.234R"), 1.234);
+    assert_eq!(convert_comment_to_value("0.33R"), 0.33);
+    assert_eq!(convert_comment_to_value("1MHz"), 1e6);
+    assert_eq!(convert_comment_to_value("100uH"), 100e-6);
+    assert_eq!(convert_comment_to_value("2k31"), 2310.0);
+    assert_eq!(convert_comment_to_value("10k12"), 10120.0);
+    assert_eq!(convert_comment_to_value("5K421"), 5421.0);
+    assert_eq!(convert_comment_to_value("4R123"), 4.123);
+    assert_eq!(convert_comment_to_value("1M12"), 1.12e6);
 }
 
 fn main() {
