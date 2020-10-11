@@ -7,7 +7,7 @@ use std::collections::HashMap;
 #[derive(Default, Debug, Clone)]
 struct ItemBOM {
     category: String,
-    value: f64,
+    value: f32,
     measure_unit: String,
     designator: String,
     comment: String,
@@ -94,9 +94,106 @@ fn test_detect_measure_unit() {
     }
 }
 
-fn convert_comment_to_value(comment: &str) -> f64 {
+fn value_to_eng_notation(base: f32, exp: i32) -> String {
+    /*
+    Returns float/int value <x> formatted in a simplified engineering format -
+    using an exponent that is a multiple of 3.
+
+    format: printf-style string used to format the value before the exponent.
+          1230.0 => 1.23k
+      -1230000.0 => -1.23M
+    */
+
+    let mut sign = String::new();
+    let mut v = value;
+    if value < 0.0 {
+        v = -value;
+        sign = String::from("-");
+    }
+
+    let exp = v.log10().floor();
+    let exp3 = exp - (exp % 3.0);
+    let d: f64 = 10.0;
+    let x3 = v / d.powf(exp3);
+
+    let mut expletter = String::new();
+    if -24.0 <= exp3 && exp3 <= 24.0 {
+        let idx = ((exp3 - (-24.0)) / 3.0).floor() as usize;
+        expletter = match "yzafpnum kMGTPEZY".chars().nth(idx) {
+            None => panic!("error"),
+            Some(s) => s.to_string(),
+        }
+    }
+
+    String::from(format!("{}{}{}", sign, x3, expletter))
+}
+
+#[test]
+fn test_value_to_eng_notation() {
+    let data = [
+        (100.000, -9, "100nF"),
+        (1.000, 1, "1R0"),
+        (100.000, -9, "100nF"),
+        (1.000, 1, "1R0"),
+        (1.000, 3, "1k"),
+        (2.300, 3, "2k3"),
+        (4.000, -3, "4mH"),
+        (12.000, 6, "12MHZ"),
+        (33.000, -9, "33nohm"),
+        (100.000, -12, "100pF"),
+        (1.100, 1, "1.1R"),
+        (32.768, 3, "32.768kHz"),
+        (12.134, 3, "12.134kHz"),
+        (100.000, -6, "100uH"),
+        (5.421, 3, "5K421"),
+        (2.200, -6, "2.2uH"),
+        (0.300, 1, "0.3"),
+        (4.700, -3, "4.7mH inductor"),
+        (0.330, 1, "0.33R"),
+        (1.100, 1, "1R1"),
+        (1.200, 1, "1R2"),
+        (0.300, 1, "0R3"),
+        (1.800, 1, "1R8"),
+        (1.100, 1, "1.1R"),
+        (1.200, 1, "1.2R"),
+        (0.300, 1, "0.3R"),
+        (1.800, 1, "1.8R"),
+        (1.500, 3, "1k5"),
+        (1.000, 1, "1"),
+        (10.000, 1, "10R"),
+        (0.100, -6, "0.1uF"),
+        (1.000, 1, "1F"),
+        (10.000, -12, "10pF"),
+        (47.000, -6, "47uF"),
+        (1.000, -6, "1uF"),
+        (1.000, -9, "1nH"),
+        (1.000, 1, "1H"),
+        (10.000, -12, "10pH"),
+        (47.000, -6, "47uH"),
+        (68.000, 1, "68ohm"),
+        (3.330, 1, "3.33R"),
+        (0.120, 1, "0.12R"),
+        (1.234, 1, "1.234R"),
+        (0.330, 1, "0.33R"),
+        (1.000, 6, "1MHz"),
+        (100.000, -6, "100uH"),
+        (2.310, 3, "2k31"),
+        (10.120, 3, "10k12"),
+        (5.421, 3, "5K421"),
+        (4.123, 1, "4R123"),
+        (1.120, 6, "1M12"),
+    ];
+
+    for i in data.iter() {
+        //assert_eq!(value_to_eng_notation(i.1), i.0);
+        println!("####### {} {}", value_to_eng_notation(i.1), i.0);
+    }
+    assert_eq!(0, 1);
+}
+
+fn convert_comment_to_value(comment: &str) -> (f32, i32) {
     if comment == "NP" {
-        return -1.0;
+        return (-1.0, 0);
     }
 
     let v = comment
@@ -113,20 +210,19 @@ fn convert_comment_to_value(comment: &str) -> f64 {
         static ref VAL: Regex = Regex::new(r"^([0-9.,]*)([GMkKRmunp]?)([0-9.,]*)").unwrap();
     }
 
-    println!("{:?}", value);
     match VAL.captures(value) {
         None => panic!("Fail to parse component value"),
         Some(cc) => {
             let left = cc.get(1).map_or("", |m| m.as_str());
             let mult = match cc.get(2).map_or("", |m| m.as_str()).as_ref() {
-                "G" => 1e12,
-                "M" => 1e6,
-                "k" | "K" => 1e3,
-                "R" | "" => 1.0,
-                "m" => 1e-3,
-                "u" => 1e-6,
-                "n" => 1e-9,
-                "p" => 1e-12,
+                "G" => 12,
+                "M" => 6,
+                "k" | "K" => 3,
+                "R" | "" => 1,
+                "m" => -3,
+                "u" => -6,
+                "n" => -9,
+                "p" => -12,
                 _ => panic!("Invalid number"),
             };
             let right = cc.get(3).map_or("", |m| m.as_str());
@@ -140,7 +236,7 @@ fn convert_comment_to_value(comment: &str) -> f64 {
                 together = format!("{}{}", left, right);
             }
 
-            let base = match together.parse::<f64>() {
+            let base = match together.parse::<f32>() {
                 Err(error) => panic!(
                     "Invalid base number for convertion from string value to float {:?}",
                     error
@@ -148,23 +244,7 @@ fn convert_comment_to_value(comment: &str) -> f64 {
                 Ok(v) => v,
             };
 
-            let num = format!("{:.1$}", base * mult, 15);
-
-            println!(
-                "{} >> l:{} r:{} -> n:{}, b*n:{}",
-                value,
-                left,
-                right,
-                num,
-                base * mult
-            );
-            match num.parse::<f64>() {
-                Err(error) => panic!(
-                    "Invalid base number for convertion from string value to float {:?}",
-                    error
-                ),
-                Ok(v) => v,
-            }
+            (base, mult)
         }
     }
 }
@@ -226,8 +306,10 @@ fn test_convert_comment_to_value() {
     ];
 
     for i in data.iter() {
-        assert_eq!(convert_comment_to_value(i.0), i.1);
+        let a = convert_comment_to_value(i.0);
+        println!("({:.3}, {:3}, \"{}\"),", a.0, a.1, i.0);
     }
+    assert_eq!(0, 1);
 }
 
 fn main() {
@@ -250,7 +332,7 @@ fn main() {
 
     for item in boms {
         println!("Parse: {}", item);
-        let mut workbook: Xlsx<_> = match open_workbook(item) {
+        let mut workbook: Xlsx<std::io::BufReader<std::fs::File>> = match open_workbook(item) {
             Ok(wk) => wk,
             Err(error) => {
                 println!("Unable read bom: {}", error);
@@ -310,7 +392,7 @@ fn main() {
                                 .map(|designator| ItemBOM {
                                     designator: designator.trim().to_owned(),
                                     category: guess_category(designator.trim()),
-                                    value: convert_comment_to_value(&template.comment),
+                                    value: convert_comment_to_value(&template.comment).0,
                                     measure_unit: detect_measure_unit(&template.designator.trim()),
                                     ..template.clone()
                                 })
