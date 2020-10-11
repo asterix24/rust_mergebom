@@ -171,55 +171,63 @@ fn convert_comment_to_value(comment: &str) -> f64 {
 
 #[test]
 fn test_convert_comment_to_value() {
-    assert_eq!(convert_comment_to_value("100nF"), 100e-9);
-    assert_eq!(convert_comment_to_value("1R0"), 1.0);
-    assert_eq!(convert_comment_to_value("1k"), 1e3);
-    assert_eq!(convert_comment_to_value("2k3"), 2300.0);
-    assert_eq!(convert_comment_to_value("4mH"), 4e-3);
-    assert_eq!(convert_comment_to_value("12MHZ"), 12e6);
-    assert_eq!(convert_comment_to_value("33nohm"), 33e-9);
-    assert_eq!(convert_comment_to_value("100pF"), 100e-12);
-    assert_eq!(convert_comment_to_value("1.1R"), 1.1);
-    assert_eq!(convert_comment_to_value("32.768kHz"), 32768.0);
-    assert_eq!(convert_comment_to_value("12.134kHz"), 12134.0);
-    assert_eq!(convert_comment_to_value("100uH"), 100e-6);
-    assert_eq!(convert_comment_to_value("5K421"), 5421.0);
-    assert_eq!(convert_comment_to_value("2.2uH"), 2.2e-6);
-    assert_eq!(convert_comment_to_value("0.3"), 0.3);
-    assert_eq!(convert_comment_to_value("4.7mH inductor"), 4.7e-3);
-    assert_eq!(convert_comment_to_value("0.33R"), 0.33);
-    assert_eq!(convert_comment_to_value("1R1"), 1.1);
-    assert_eq!(convert_comment_to_value("1R2"), 1.2);
-    assert_eq!(convert_comment_to_value("0R3"), 0.3);
-    assert_eq!(convert_comment_to_value("1R8"), 1.8);
-    assert_eq!(convert_comment_to_value("1.1R"), 1.1);
-    assert_eq!(convert_comment_to_value("1.2R"), 1.2);
-    assert_eq!(convert_comment_to_value("0.3R"), 0.3);
-    assert_eq!(convert_comment_to_value("1.8R"), 1.8);
-    assert_eq!(convert_comment_to_value("1k5"), 1500.0);
-    assert_eq!(convert_comment_to_value("1"), 1.0);
-    assert_eq!(convert_comment_to_value("10R"), 10.0);
-    assert_eq!(convert_comment_to_value("0.1uF"), 0.1e-6);
-    assert_eq!(convert_comment_to_value("1F"), 1.0);
-    assert_eq!(convert_comment_to_value("10pF"), 10e-12);
-    assert_eq!(convert_comment_to_value("47uF"), 47e-6);
-    assert_eq!(convert_comment_to_value("1uF"), 1e-6);
-    assert_eq!(convert_comment_to_value("1nH"), 1e-9);
-    assert_eq!(convert_comment_to_value("1H"), 1.0);
-    assert_eq!(convert_comment_to_value("10pH"), 10e-12);
-    assert_eq!(convert_comment_to_value("47uH"), 47e-6);
-    assert_eq!(convert_comment_to_value("68ohm"), 68.0);
-    assert_eq!(convert_comment_to_value("3.33R"), 3.33);
-    assert_eq!(convert_comment_to_value("0.12R"), 0.12);
-    assert_eq!(convert_comment_to_value("1.234R"), 1.234);
-    assert_eq!(convert_comment_to_value("0.33R"), 0.33);
-    assert_eq!(convert_comment_to_value("1MHz"), 1e6);
-    assert_eq!(convert_comment_to_value("100uH"), 100e-6);
-    assert_eq!(convert_comment_to_value("2k31"), 2310.0);
-    assert_eq!(convert_comment_to_value("10k12"), 10120.0);
-    assert_eq!(convert_comment_to_value("5K421"), 5421.0);
-    assert_eq!(convert_comment_to_value("4R123"), 4.123);
-    assert_eq!(convert_comment_to_value("1M12"), 1.12e6);
+    let data = [
+        ("100nF", 100e-9),
+        ("1R0", 1.0),
+        ("100nF", 100e-9),
+        ("1R0", 1.0),
+        ("1k", 1e3),
+        ("2k3", 2300.0),
+        ("4mH", 4e-3),
+        ("12MHZ", 12e6),
+        ("33nohm", 33e-9),
+        ("100pF", 100e-12),
+        ("1.1R", 1.1),
+        ("32.768kHz", 32768.0),
+        ("12.134kHz", 12134.0),
+        ("100uH", 100e-6),
+        ("5K421", 5421.0),
+        ("2.2uH", 2.2e-6),
+        ("0.3", 0.3),
+        ("4.7mH inductor", 4.7e-3),
+        ("0.33R", 0.33),
+        ("1R1", 1.1),
+        ("1R2", 1.2),
+        ("0R3", 0.3),
+        ("1R8", 1.8),
+        ("1.1R", 1.1),
+        ("1.2R", 1.2),
+        ("0.3R", 0.3),
+        ("1.8R", 1.8),
+        ("1k5", 1500.0),
+        ("1", 1.0),
+        ("10R", 10.0),
+        ("0.1uF", 0.1e-6),
+        ("1F", 1.0),
+        ("10pF", 10e-12),
+        ("47uF", 47e-6),
+        ("1uF", 1e-6),
+        ("1nH", 1e-9),
+        ("1H", 1.0),
+        ("10pH", 10e-12),
+        ("47uH", 47e-6),
+        ("68ohm", 68.0),
+        ("3.33R", 3.33),
+        ("0.12R", 0.12),
+        ("1.234R", 1.234),
+        ("0.33R", 0.33),
+        ("1MHz", 1e6),
+        ("100uH", 100e-6),
+        ("2k31", 2310.0),
+        ("10k12", 10120.0),
+        ("5K421", 5421.0),
+        ("4R123", 4.123),
+        ("1M12", 1.12e6),
+    ];
+
+    for i in data.iter() {
+        assert_eq!(convert_comment_to_value(i.0), i.1);
+    }
 }
 
 fn main() {
