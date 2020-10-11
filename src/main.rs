@@ -94,101 +94,88 @@ fn test_detect_measure_unit() {
     }
 }
 
-fn value_to_eng_notation(base: f32, exp: i32) -> String {
-    /*
-    Returns float/int value <x> formatted in a simplified engineering format -
-    using an exponent that is a multiple of 3.
+fn value_to_eng_notation(base: f32, exp: i32, unit: &str) -> String {
+    let unitletter = match exp {
+        12 => "G",
+        6 => "M",
+        3 => "k",
+        0 | 1 => "",
+        -3 => "m",
+        -6 => "u",
+        -9 => "n",
+        -12 => "p",
+        _ => panic!("Invalid exp for conversion"),
+    };
 
-    format: printf-style string used to format the value before the exponent.
-          1230.0 => 1.23k
-      -1230000.0 => -1.23M
-    */
-
-    let mut sign = String::new();
-    let mut v = value;
-    if value < 0.0 {
-        v = -value;
-        sign = String::from("-");
-    }
-
-    let exp = v.log10().floor();
-    let exp3 = exp - (exp % 3.0);
-    let d: f64 = 10.0;
-    let x3 = v / d.powf(exp3);
-
-    let mut expletter = String::new();
-    if -24.0 <= exp3 && exp3 <= 24.0 {
-        let idx = ((exp3 - (-24.0)) / 3.0).floor() as usize;
-        expletter = match "yzafpnum kMGTPEZY".chars().nth(idx) {
-            None => panic!("error"),
-            Some(s) => s.to_string(),
+    let mut value = format!("{}", base);
+    if unit == "ohm" && value.contains(".") {
+        value = match unitletter {
+            "G" | "M" | "k" => value.replace(".", unitletter),
+            _ => value,
         }
+    } else {
+        value = format!("{}{}", value, unitletter);
     }
-
-    String::from(format!("{}{}{}", sign, x3, expletter))
+    String::from(value)
 }
 
 #[test]
 fn test_value_to_eng_notation() {
     let data = [
-        (100.000, -9, "100nF"),
-        (1.000, 1, "1R0"),
-        (100.000, -9, "100nF"),
-        (1.000, 1, "1R0"),
-        (1.000, 3, "1k"),
-        (2.300, 3, "2k3"),
-        (4.000, -3, "4mH"),
-        (12.000, 6, "12MHZ"),
-        (33.000, -9, "33nohm"),
-        (100.000, -12, "100pF"),
-        (1.100, 1, "1.1R"),
-        (32.768, 3, "32.768kHz"),
-        (12.134, 3, "12.134kHz"),
-        (100.000, -6, "100uH"),
-        (5.421, 3, "5K421"),
-        (2.200, -6, "2.2uH"),
-        (0.300, 1, "0.3"),
-        (4.700, -3, "4.7mH inductor"),
-        (0.330, 1, "0.33R"),
-        (1.100, 1, "1R1"),
-        (1.200, 1, "1R2"),
-        (0.300, 1, "0R3"),
-        (1.800, 1, "1R8"),
-        (1.100, 1, "1.1R"),
-        (1.200, 1, "1.2R"),
-        (0.300, 1, "0.3R"),
-        (1.800, 1, "1.8R"),
-        (1.500, 3, "1k5"),
-        (1.000, 1, "1"),
-        (10.000, 1, "10R"),
-        (0.100, -6, "0.1uF"),
-        (1.000, 1, "1F"),
-        (10.000, -12, "10pF"),
-        (47.000, -6, "47uF"),
-        (1.000, -6, "1uF"),
-        (1.000, -9, "1nH"),
-        (1.000, 1, "1H"),
-        (10.000, -12, "10pH"),
-        (47.000, -6, "47uH"),
-        (68.000, 1, "68ohm"),
-        (3.330, 1, "3.33R"),
-        (0.120, 1, "0.12R"),
-        (1.234, 1, "1.234R"),
-        (0.330, 1, "0.33R"),
-        (1.000, 6, "1MHz"),
-        (100.000, -6, "100uH"),
-        (2.310, 3, "2k31"),
-        (10.120, 3, "10k12"),
-        (5.421, 3, "5K421"),
-        (4.123, 1, "4R123"),
-        (1.120, 6, "1M12"),
+        (100.000, -9, "F", "100n"),
+        (1.000, 1, "ohm", "1"),
+        (100.000, -9, "F", "100n"),
+        (1.000, 3, "ohm", "1k"),
+        (2.300, 3, "ohm", "2k3"),
+        (4.000, -3, "H", "4m"),
+        (12.000, 6, "Hz", "12M"),
+        (33.000, -9, "ohm", "33n"),
+        (100.000, -12, "F", "100p"),
+        (1.100, 1, "ohm", "1.1"),
+        (32.768, 3, "Hz", "32.768k"),
+        (12.134, 3, "Hz", "12.134k"),
+        (100.000, -6, "H", "100u"),
+        (2.200, -6, "F", "2.2u"),
+        (0.300, 1, "ohm", "0.3"),
+        (4.700, -3, "H", "4.7m"),
+        (0.330, 1, "ohm", "0.33"),
+        (1.100, 1, "ohm", "1.1"),
+        (1.200, 1, "ohm", "1.2"),
+        (0.300, 1, "ohm", "0.3"),
+        (1.800, 1, "ohm", "1.8"),
+        (1.100, 1, "ohm", "1.1"),
+        (1.200, 1, "ohm", "1.2"),
+        (0.300, 1, "ohm", "0.3"),
+        (1.500, 3, "ohm", "1k5"),
+        (1.000, 1, "ohm", "1"),
+        (10.000, 1, "ohm", "10"),
+        (0.100, -6, "F", "0.1u"),
+        (1.000, 1, "F", "1"),
+        (10.000, -12, "F", "10p"),
+        (47.000, -6, "F", "47u"),
+        (1.000, -6, "F", "1u"),
+        (1.000, -9, "H", "1n"),
+        (1.000, 1, "H", "1"),
+        (10.000, -12, "H", "10p"),
+        (47.000, -6, "H", "47u"),
+        (68.000, 1, "ohm", "68"),
+        (3.330, 1, "ohm", "3.33"),
+        (0.120, 1, "ohm", "0.12"),
+        (1.234, 1, "ohm", "1.234"),
+        (0.330, 1, "ohm", "0.33"),
+        (1.000, 6, "Hz", "1M"),
+        (100.000, -6, "H", "100u"),
+        (2.310, 3, "ohm", "2k31"),
+        (10.120, 3, "ohm", "10k12"),
+        (5.421, 3, "ohm", "5k421"),
+        (4.123, 1, "ohm", "4.123"),
+        (1.120, 6, "ohm", "1M12"),
     ];
 
     for i in data.iter() {
-        //assert_eq!(value_to_eng_notation(i.1), i.0);
-        println!("####### {} {}", value_to_eng_notation(i.1), i.0);
+        assert_eq!(value_to_eng_notation(i.0, i.1, i.2), i.3);
     }
-    assert_eq!(0, 1);
+    //assert_eq!(0, 1);
 }
 
 fn convert_comment_to_value(comment: &str) -> (f32, i32) {
@@ -332,7 +319,7 @@ fn main() {
 
     for item in boms {
         println!("Parse: {}", item);
-        let mut workbook: Xlsx<std::io::BufReader<std::fs::File>> = match open_workbook(item) {
+        let mut workbook: Xlsx<_> = match open_workbook(item) {
             Ok(wk) => wk,
             Err(error) => {
                 println!("Unable read bom: {}", error);
