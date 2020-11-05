@@ -1,13 +1,17 @@
+use bomerge::{convert_comment_to_value, detect_measure_unit};
 use calamine::{open_workbook, DataType, Reader, Xlsx};
 use clap::{App, Arg};
 use lazy_static::lazy_static;
 use regex::Regex;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 #[derive(Default, Debug, Clone)]
 struct ItemBOM {
     category: String,
     value: f32,
+    base_exp: (f32, i32),
+    fmt_value: String,
     measure_unit: String,
     designator: String,
     comment: String,
@@ -61,242 +65,6 @@ fn guess_category<S: AsRef<str>>(designator: S) -> String {
             _ => panic!("Invalid category"),
         },
     }
-}
-
-fn detect_measure_unit(comment: &str) -> String {
-    lazy_static! {
-        static ref RE: Regex = Regex::new(r"^([KkR|C|L|Y])").unwrap();
-    }
-    match RE.captures(comment.as_ref()) {
-        None => String::from("unknow"),
-        Some(cc) => match cc.get(1).map_or("", |m| m.as_str()).as_ref() {
-            "K" | "k" | "R" => String::from("ohm"),
-            "C" => String::from("F"),
-            "L" => String::from("H"),
-            "Y" => String::from("Hz"),
-            _ => String::from("missing"),
-        },
-    }
-}
-#[test]
-fn test_detect_measure_unit() {
-    let test_data = vec![
-        ["C123", "F"],
-        ["R123", "ohm"],
-        ["L232", "H"],
-        ["Y123", "Hz"],
-        ["Q123", "unknow"],
-        ["TR123", "unknow"],
-    ];
-
-    for data in test_data.iter() {
-        assert_eq!(detect_measure_unit(data[0]), data[1]);
-    }
-}
-
-fn value_to_eng_notation(base: f32, exp: i32, unit: &str) -> String {
-    let unitletter = match exp {
-        12 => "G",
-        6 => "M",
-        3 => "k",
-        0 | 1 => "",
-        -3 => "m",
-        -6 => "u",
-        -9 => "n",
-        -12 => "p",
-        _ => panic!("Invalid exp for conversion"),
-    };
-
-    let mut value = format!("{}", base);
-    if unit == "ohm" && value.contains(".") {
-        value = match unitletter {
-            "G" | "M" | "k" => value.replace(".", unitletter),
-            _ => value,
-        }
-    } else {
-        value = format!("{}{}", value, unitletter);
-    }
-    String::from(value)
-}
-
-#[test]
-fn test_value_to_eng_notation() {
-    let data = [
-        (100.000, -9, "F", "100n"),
-        (1.000, 1, "ohm", "1"),
-        (100.000, -9, "F", "100n"),
-        (1.000, 3, "ohm", "1k"),
-        (2.300, 3, "ohm", "2k3"),
-        (4.000, -3, "H", "4m"),
-        (12.000, 6, "Hz", "12M"),
-        (33.000, -9, "ohm", "33n"),
-        (100.000, -12, "F", "100p"),
-        (1.100, 1, "ohm", "1.1"),
-        (32.768, 3, "Hz", "32.768k"),
-        (12.134, 3, "Hz", "12.134k"),
-        (100.000, -6, "H", "100u"),
-        (2.200, -6, "F", "2.2u"),
-        (0.300, 1, "ohm", "0.3"),
-        (4.700, -3, "H", "4.7m"),
-        (0.330, 1, "ohm", "0.33"),
-        (1.100, 1, "ohm", "1.1"),
-        (1.200, 1, "ohm", "1.2"),
-        (0.300, 1, "ohm", "0.3"),
-        (1.800, 1, "ohm", "1.8"),
-        (1.100, 1, "ohm", "1.1"),
-        (1.200, 1, "ohm", "1.2"),
-        (0.300, 1, "ohm", "0.3"),
-        (1.500, 3, "ohm", "1k5"),
-        (1.000, 1, "ohm", "1"),
-        (10.000, 1, "ohm", "10"),
-        (0.100, -6, "F", "0.1u"),
-        (1.000, 1, "F", "1"),
-        (10.000, -12, "F", "10p"),
-        (47.000, -6, "F", "47u"),
-        (1.000, -6, "F", "1u"),
-        (1.000, -9, "H", "1n"),
-        (1.000, 1, "H", "1"),
-        (10.000, -12, "H", "10p"),
-        (47.000, -6, "H", "47u"),
-        (68.000, 1, "ohm", "68"),
-        (3.330, 1, "ohm", "3.33"),
-        (0.120, 1, "ohm", "0.12"),
-        (1.234, 1, "ohm", "1.234"),
-        (0.330, 1, "ohm", "0.33"),
-        (1.000, 6, "Hz", "1M"),
-        (100.000, -6, "H", "100u"),
-        (2.310, 3, "ohm", "2k31"),
-        (10.120, 3, "ohm", "10k12"),
-        (5.421, 3, "ohm", "5k421"),
-        (4.123, 1, "ohm", "4.123"),
-        (1.120, 6, "ohm", "1M12"),
-    ];
-
-    for i in data.iter() {
-        assert_eq!(value_to_eng_notation(i.0, i.1, i.2), i.3);
-    }
-    //assert_eq!(0, 1);
-}
-
-fn convert_comment_to_value(comment: &str) -> (f32, i32) {
-    if comment == "NP" {
-        return (-1.0, 0);
-    }
-
-    let v = comment
-        .split(",")
-        .map(|item| item.trim())
-        .collect::<Vec<_>>();
-
-    let value = match v.get(0) {
-        None => panic!("No component value to parse"),
-        Some(v) => v,
-    };
-
-    lazy_static! {
-        static ref VAL: Regex = Regex::new(r"^([0-9.,]*)([GMkKRmunp]?)([0-9.,]*)").unwrap();
-    }
-
-    match VAL.captures(value) {
-        None => panic!("Fail to parse component value"),
-        Some(cc) => {
-            let left = cc.get(1).map_or("", |m| m.as_str());
-            let mult = match cc.get(2).map_or("", |m| m.as_str()).as_ref() {
-                "G" => 12,
-                "M" => 6,
-                "k" | "K" => 3,
-                "R" | "" => 1,
-                "m" => -3,
-                "u" => -6,
-                "n" => -9,
-                "p" => -12,
-                _ => panic!("Invalid number"),
-            };
-            let right = cc.get(3).map_or("", |m| m.as_str());
-
-            let mut together;
-            let left = left.replace(",", ".");
-            let right = if right == "" { "0" } else { right };
-
-            together = format!("{}.{}", left, right);
-            if left.contains(".") {
-                together = format!("{}{}", left, right);
-            }
-
-            let base = match together.parse::<f32>() {
-                Err(error) => panic!(
-                    "Invalid base number for convertion from string value to float {:?}",
-                    error
-                ),
-                Ok(v) => v,
-            };
-
-            (base, mult)
-        }
-    }
-}
-
-#[test]
-fn test_convert_comment_to_value() {
-    let data = [
-        ("100nF", 100e-9),
-        ("1R0", 1.0),
-        ("100nF", 100e-9),
-        ("1R0", 1.0),
-        ("1k", 1e3),
-        ("2k3", 2300.0),
-        ("4mH", 4e-3),
-        ("12MHZ", 12e6),
-        ("33nohm", 33e-9),
-        ("100pF", 100e-12),
-        ("1.1R", 1.1),
-        ("32.768kHz", 32768.0),
-        ("12.134kHz", 12134.0),
-        ("100uH", 100e-6),
-        ("5K421", 5421.0),
-        ("2.2uH", 2.2e-6),
-        ("0.3", 0.3),
-        ("4.7mH inductor", 4.7e-3),
-        ("0.33R", 0.33),
-        ("1R1", 1.1),
-        ("1R2", 1.2),
-        ("0R3", 0.3),
-        ("1R8", 1.8),
-        ("1.1R", 1.1),
-        ("1.2R", 1.2),
-        ("0.3R", 0.3),
-        ("1.8R", 1.8),
-        ("1k5", 1500.0),
-        ("1", 1.0),
-        ("10R", 10.0),
-        ("0.1uF", 0.1e-6),
-        ("1F", 1.0),
-        ("10pF", 10e-12),
-        ("47uF", 47e-6),
-        ("1uF", 1e-6),
-        ("1nH", 1e-9),
-        ("1H", 1.0),
-        ("10pH", 10e-12),
-        ("47uH", 47e-6),
-        ("68ohm", 68.0),
-        ("3.33R", 3.33),
-        ("0.12R", 0.12),
-        ("1.234R", 1.234),
-        ("0.33R", 0.33),
-        ("1MHz", 1e6),
-        ("100uH", 100e-6),
-        ("2k31", 2310.0),
-        ("10k12", 10120.0),
-        ("5K421", 5421.0),
-        ("4R123", 4.123),
-        ("1M12", 1.12e6),
-    ];
-
-    for i in data.iter() {
-        let a = convert_comment_to_value(i.0);
-        println!("({:.3}, {:3}, \"{}\"),", a.0, a.1, i.0);
-    }
-    assert_eq!(0, 1);
 }
 
 fn main() {
@@ -379,7 +147,7 @@ fn main() {
                                 .map(|designator| ItemBOM {
                                     designator: designator.trim().to_owned(),
                                     category: guess_category(designator.trim()),
-                                    value: convert_comment_to_value(&template.comment).0,
+                                    base_exp: convert_comment_to_value(&template.comment),
                                     measure_unit: detect_measure_unit(&template.designator.trim()),
                                     ..template.clone()
                                 })
@@ -391,11 +159,50 @@ fn main() {
         }
     }
 
-    let tt = items.clone();
-    for i in items {
-        println!("{:?}", i);
+    // compute_value(&mut items);
+    // for i in &items {
+    //     println!("{:?}", i);
+    // }
+    // items.sort_by_key(|i| i.base_exp.1);
+
+    let mut grouped_items: Vec<HashMap<String, Vec<ItemBOM>>> = Vec::new();
+    for category in CATEGORY.iter() {
+        let group = items.iter().filter(|n| n.category == *category);
+
+        let mut item_sets: HashMap<String, Vec<ItemBOM>> = HashMap::new();
+        for row in group {
+            let key = match *category {
+                "connectors" => format!("{}{}", row.footprint, row.description),
+                _ => format!("{}{}{}", row.comment, row.footprint, row.description),
+            };
+
+            match item_sets.entry(key) {
+                Entry::Occupied(mut o) => {
+                    o.get_mut().push(row.clone());
+                }
+                Entry::Vacant(v) => {
+                    v.insert(vec![row.clone(); 1]);
+                }
+            };
+        }
+        grouped_items.push(item_sets);
+        //println!("{} {:?}", category, group.size_hint());
     }
-    for v in CATEGORY.iter() {
-        println!("{}: {}", v, tt.iter().filter(|&n| n.category == *v).count());
+
+    for v in grouped_items {
+        for (_, m) in v {
+            let mut d: Vec<String> = Vec::new();
+            for n in m.iter() {
+                d.push(n.designator.clone());
+            }
+
+            println!("{} {:?} {}", m[0].category, m.len(), d.join(", "));
+        }
+    }
+}
+
+fn compute_value(items: &mut Vec<ItemBOM>) {
+    for i in items {
+        i.value = i.base_exp.0 * 10_f32.powf(i.base_exp.1 as f32);
     }
 }
