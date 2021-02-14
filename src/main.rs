@@ -3,17 +3,26 @@ use calamine::{open_workbook, DataType, Reader, Xlsx};
 use clap::{App, Arg};
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::{collections::hash_map::Entry, u16};
+use xlsxwriter::*;
 
 #[derive(Default, Debug, Clone)]
-struct ItemBOM {
+struct Item {
     category: String,
-    value: f32,
     base_exp: (f32, i32),
     fmt_value: String,
     measure_unit: String,
     designator: String,
+    comment: String,
+    footprint: String,
+    description: String,
+}
+
+#[derive(Default, Debug, Clone)]
+struct ItemRow {
+    quantity: String,
+    designator: Vec<String>,
     comment: String,
     footprint: String,
     description: String,
@@ -83,7 +92,7 @@ fn main() {
     let boms: Vec<&str> = matches.values_of("BOMFile").unwrap().collect();
 
     let mut header_map = HashMap::new();
-    let mut items: Vec<ItemBOM> = Vec::new();
+    let mut items: Vec<Item> = Vec::new();
 
     for item in boms {
         println!("Parse: {}", item);
@@ -113,7 +122,7 @@ fn main() {
             let (rw, _) = range.get_size();
             for row in 0..rw {
                 if let Some(&designator) = header_map.get("designator") {
-                    let mut template = ItemBOM::default();
+                    let mut template = Item::default();
 
                     let mut skip_item = false;
                     for label in HEADERS.iter() {
@@ -144,7 +153,7 @@ fn main() {
                                 .unwrap()
                                 .to_string()
                                 .split(",")
-                                .map(|designator| ItemBOM {
+                                .map(|designator| Item {
                                     designator: designator.trim().to_owned(),
                                     category: guess_category(designator.trim()),
                                     base_exp: convert_comment_to_value(&template.comment),
@@ -159,17 +168,11 @@ fn main() {
         }
     }
 
-    // compute_value(&mut items);
-    // for i in &items {
-    //     println!("{:?}", i);
-    // }
-    // items.sort_by_key(|i| i.base_exp.1);
-
-    let mut grouped_items: Vec<HashMap<String, Vec<ItemBOM>>> = Vec::new();
+    let mut grouped_items: HashMap<String, Vec<HashMap<String, Vec<Item>>>> = HashMap::new();
     for category in CATEGORY.iter() {
         let group = items.iter().filter(|n| n.category == *category);
 
-        let mut item_sets: HashMap<String, Vec<ItemBOM>> = HashMap::new();
+        let mut item_sets: HashMap<String, Vec<Item>> = HashMap::new();
         for row in group {
             let key = match *category {
                 "connectors" => format!("{}{}", row.footprint, row.description),
@@ -185,24 +188,147 @@ fn main() {
                 }
             };
         }
-        grouped_items.push(item_sets);
-        //println!("{} {:?}", category, group.size_hint());
+        match grouped_items.entry(String::from(*category)) {
+            Entry::Occupied(mut o) => {
+                o.get_mut().push(item_sets);
+            }
+            Entry::Vacant(v) => {
+                v.insert(vec![item_sets; 1]);
+            }
+        };
     }
 
-    for v in grouped_items {
-        for (_, m) in v {
-            let mut d: Vec<String> = Vec::new();
-            for n in m.iter() {
-                d.push(n.designator.clone());
-            }
+    let workbook = Workbook::new("merged_bom.xlsx");
+    let default_fmt = workbook.add_format().set_font_size(10.0).set_text_wrap();
 
-            println!("{} {:?} {}", m[0].category, m.len(), d.join(", "));
+    let hdr_fmt = workbook
+        .add_format()
+        .set_bg_color(FormatColor::Cyan)
+        .set_bold()
+        .set_font_size(12.0);
+    let merge_fmt = workbook
+        .add_format()
+        .set_bg_color(FormatColor::Yellow)
+        .set_bold()
+        .set_border(FormatBorder::Thin)
+        .set_align(FormatAlignment::CenterAcross);
+
+    let tot_fmt = workbook
+        .add_format()
+        .set_bg_color(FormatColor::Lime)
+        .set_bold()
+        .set_font_size(12.0);
+
+    let mut sheet1 = match workbook.add_worksheet(None) {
+        Ok(wk) => wk,
+        _ => panic!("Unable to open wk"),
+    };
+
+    let mut row_curr: u32 = 10;
+    let mut col: u16 = 0;
+    for label in HEADERS.iter() {
+        match sheet1.write_string(row_curr, col, label, Some(&hdr_fmt)) {
+            Ok(m) => m,
+            _ => panic!("Error!"),
+        };
+        col += 1;
+    }
+    row_curr += 1;
+    for (category, items) in grouped_items {
+        println!(">>>> {:?}", category);
+        match sheet1.merge_range(
+            row_curr,
+            0,
+            row_curr,
+            HEADERS.len() as u16,
+            category.as_str(),
+            Some(&merge_fmt),
+        ) {
+            Ok(m) => m,
+            _ => panic!("Error!"),
+        };
+
+        row_curr += 1;
+        //let sorted_item = items.sort_by_key(|k| Ord(pow(k.base_exp[0], k.base_exp[1])));
+        for unique_row in items {
+            for (unique_key, parts) in unique_row {
+                println!("{:?} {:?}", unique_key, parts.len());
+                let row_elem = match parts.first() {
+                    Some(r) => r,
+                    _ => panic!("empty part list"),
+                };
+                for label in HEADERS.iter() {
+                    match *label {
+                        "quantity" => {
+                            match sheet1.write_string(
+                                row_curr,
+                                0,
+                                parts.len().to_string().as_str(),
+                                Some(&tot_fmt),
+                            ) {
+                                Ok(m) => m,
+                                _ => panic!("Error!"),
+                            };
+                        }
+                        "designator" => {
+                            let mut ss: Vec<String> = Vec::new();
+                            for s in parts.iter() {
+                                ss.push(s.designator.clone());
+                            }
+                            let designators = ss.join(", ");
+                            println!("\n===\n{:?}\n===\n", designators);
+                            match sheet1.write_string(
+                                row_curr,
+                                1,
+                                designators.as_str(),
+                                Some(&default_fmt),
+                            ) {
+                                Ok(m) => m,
+                                _ => panic!("Error!"),
+                            };
+                        }
+                        "comment" => {
+                            match sheet1.write_string(
+                                row_curr,
+                                2,
+                                row_elem.comment.as_str(),
+                                Some(&default_fmt),
+                            ) {
+                                Ok(m) => m,
+                                _ => panic!("Error!"),
+                            };
+                        }
+                        "footprint" => {
+                            match sheet1.write_string(
+                                row_curr,
+                                3,
+                                row_elem.footprint.as_str(),
+                                Some(&default_fmt),
+                            ) {
+                                Ok(m) => m,
+                                _ => panic!("Error!"),
+                            };
+                        }
+                        "description" => {
+                            match sheet1.write_string(
+                                row_curr,
+                                4,
+                                row_elem.description.as_str(),
+                                Some(&default_fmt),
+                            ) {
+                                Ok(m) => m,
+                                _ => panic!("Error!"),
+                            };
+                        }
+                        _ => println!("Invalid category"),
+                    }
+                }
+                row_curr += 1;
+            }
         }
     }
-}
-
-fn compute_value(items: &mut Vec<ItemBOM>) {
-    for i in items {
-        i.value = i.base_exp.0 * 10_f32.powf(i.base_exp.1 as f32);
-    }
+    match workbook.close() {
+        Ok(m) => m,
+        _ => panic!("Error!"),
+    };
 }
