@@ -1,3 +1,5 @@
 /target
 .~lock.merged_bom.xlsx#
 .DS_Store
+.vscode/
+Cargo.lock
