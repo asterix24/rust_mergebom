@@ -1,32 +1,14 @@
-use bomerge::{convert_comment_to_value, detect_measure_unit};
 use calamine::{open_workbook, DataType, Reader, Xlsx};
 use clap::{App, Arg};
 use lazy_static::lazy_static;
 use regex::Regex;
+use std::collections::HashMap;
 use std::{collections::hash_map::Entry, u16};
-use std::{collections::HashMap, str::FromStr};
 use xlsxwriter::*;
-
-#[derive(Default, Debug, Clone)]
-pub struct Item {
-    category: String,
-    base_exp: (f32, i32),
-    fmt_value: String,
-    measure_unit: String,
-    designator: String,
-    comment: String,
-    footprint: String,
-    description: String,
-}
-
-#[derive(Default, Debug, Clone)]
-struct ItemRow {
-    quantity: String,
-    designator: Vec<String>,
-    comment: String,
-    footprint: String,
-    description: String,
-}
+mod items;
+mod utils;
+use items::*;
+use utils::*;
 
 const HEADERS: [&'static str; 5] = [
     "quantity",
