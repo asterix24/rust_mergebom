@@ -100,6 +100,32 @@ pub fn convert_comment_to_value(comment: &str) -> (f32, i32) {
     }
 }
 
+pub fn guess_category<S: AsRef<str>>(designator: S) -> String {
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"^([a-zA-Z_]{1,3})").unwrap();
+    }
+
+    match RE.captures(designator.as_ref()) {
+        None => String::from("ivalid"),
+        Some(cc) => match cc.get(1).map_or("", |m| m.as_str()).as_ref() {
+            "J" | "X" | "P" | "SIM" => String::from("connectors"),
+            "S" | "SCR" | "SPA" | "BAT" | "BUZ" | "BT" | "B" | "SW" | "MP" | "K" => {
+                String::from("mechanicals")
+            }
+            "F" | "FU" => String::from("fuses"),
+            "R" | "RN" | "R_G" => String::from("resistors"),
+            "C" | "CAP" => String::from("capacitors"),
+            "D" | "DZ" => String::from("diode"),
+            "L" => String::from("inductors"),
+            "Q" => String::from("transistor"),
+            "TR" => String::from("transformes"),
+            "Y" => String::from("cristal"),
+            "U" => String::from("ic"),
+            _ => panic!("Invalid category"),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,7 +189,6 @@ mod tests {
             let a = convert_comment_to_value(i.0);
             println!("({:.3}, {:3}, \"{}\"),", a.0, a.1, i.0);
         }
-        assert_eq!(0, 1);
     }
 
     #[test]
