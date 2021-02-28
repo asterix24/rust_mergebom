@@ -1,139 +1,148 @@
 pub mod items;
 pub mod utils;
 
+use std::io::BufReader;
+
 use items::*;
 use lazy_static::lazy_static;
 use regex::Regex;
+use std::fs::File;
 use utils::*;
 
-use calamine::{open_workbook, DataType, Reader, Xlsx};
-
-const CATEGORY: [&'static str; 11] = [
-    "connectors",
-    "mechanicals",
-    "fuses",
-    "resistors",
-    "capacitors",
-    "diode",
-    "inductors",
-    "transistor",
-    "transformes",
-    "cristal",
-    "ic",
-];
-
-pub fn find_header(bomfile: &str) -> Vec<HeaderMap> {
-    lazy_static! {
-        static ref RE: Regex = Regex::new(r"NOTE|CODE (.*)").unwrap();
-    }
-
-    println!("Parse: {}", bomfile);
-    let mut workbook: Xlsx<_> = match open_workbook(bomfile) {
-        Ok(wk) => wk,
-        Err(error) => panic!("Error while parsing file: {:?}", error),
-    };
-
-    let mut header_map: Vec<HeaderMap> = Vec::new();
-    /* Search headers in source files */
-    if let Some(Ok(range)) = workbook.worksheet_range("Sheet1") {
-        let (rw, cl) = range.get_size();
-        for row in 0..rw {
-            for column in 0..cl {
-                if let Some(DataType::String(s)) = range.get((row, column)) {
-                    match s.to_lowercase().as_str() {
-                        "quantity" | "designator" | "comment" | "footprint" | "description"
-                        | "layer" | "mounttechnoloy" | "mounting_technoloy" => {
-                            header_map.push(HeaderMap {
-                                key: String::from(s.to_lowercase()),
-                                index: column,
-                            })
-                        }
-                        _ => match RE.captures(s.as_ref()) {
-                            Some(cc) => match cc.get(1).map_or(None, |m| Some(m.as_str())) {
-                                None => (),
-                                Some(m) => header_map.push(HeaderMap {
-                                    key: format!("{:}", m),
-                                    index: column,
-                                }),
-                            },
-                            None => (),
-                        },
-                    }
-                }
-            }
-        }
-    }
-    println!("Trovato: {:?}", header_map);
-    return header_map;
+use calamine::{open_workbook_auto, DataType, Reader, Sheets};
+pub struct DataParser {
+    header_map: Vec<HeaderMap>,
+    workbook: Sheets,
 }
 
-pub fn parse_xlsx(bomfile: &str, heade_map: &Vec<HeaderMap>) -> Vec<Item> {
-    let mut items: Vec<Item> = Vec::new();
+pub trait Parser {
+    fn new(filename: &'static str) -> Self;
+    fn headers(self) -> Vec<HeaderMap>;
+    fn xlsx(self) -> Vec<Item>;
+}
 
-    println!("Parse: {}", bomfile);
-    let mut workbook: Xlsx<_> = match open_workbook(bomfile) {
-        Ok(wk) => wk,
-        Err(error) => panic!("Error while parsing file: {:?}", error),
-    };
+impl DataParser {
+    pub fn find_header(&mut self) {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"NOTE|CODE (.*)").unwrap();
+        }
 
-    /* Find data in source with column position find above */
-    if let Some(Ok(range)) = workbook.worksheet_range("Sheet1") {
-        let (rw, _) = range.get_size();
-        for row in 0..rw {
-            let mut template = Item::default();
-            let mut skip_row = false;
-            for header_label in heade_map {
-                // this row contain a header, so we should skip it.
-                if let Some(DataType::String(value)) = range.get((row, header_label.index)) {
-                    match header_label.key.to_lowercase().as_str() {
-                        "designator" => {
-                            if value.to_lowercase() == header_label.key || value.is_empty() {
-                                println!("skip: [{:?}]", value);
-                                skip_row = true;
-                                continue;
+        /* Search headers in source files */
+        if let Some(Ok(range)) = self.workbook.worksheet_range("Sheet1") {
+            let (rw, cl) = range.get_size();
+            for row in 0..rw {
+                for column in 0..cl {
+                    if let Some(DataType::String(s)) = range.get((row, column)) {
+                        match s.to_lowercase().as_str() {
+                            "quantity" | "designator" | "comment" | "footprint" | "description"
+                            | "layer" | "mounttechnoloy" | "mounting_technoloy" => {
+                                self.header_map.push(HeaderMap {
+                                    key: String::from(s.to_lowercase()),
+                                    index: column,
+                                })
                             }
-                            template.designator = value
-                                .split(",")
-                                .map(|m| m.trim().to_string())
-                                .collect::<Vec<_>>();
-
-                            let des = template.designator.first().unwrap();
-                            template.category = guess_category(des.trim());
-                            template.measure_unit = detect_measure_unit(des.trim());
-                        }
-                        "comment" => {
-                            template.comment = value.clone();
-                            template.base_exp = convert_comment_to_value(value);
-                        }
-                        "description" => {
-                            template.description = value.clone();
-                        }
-                        "footprint" => {
-                            template.footprint = value.clone();
-                        }
-                        "layer" | "mounttechnoloy" | "mounting_technoloy" => {
-                            template.extra.push(ExtraCol {
-                                label: header_label.key.clone(),
-                                value: value.to_uppercase(),
-                                index: header_label.index,
-                            });
-                        }
-                        _ => {
-                            template.extra.push(ExtraCol {
-                                label: header_label.key.clone(),
-                                value: value.clone(),
-                                index: header_label.index,
-                            });
+                            _ => match RE.captures(s.as_ref()) {
+                                Some(cc) => match cc.get(1).map_or(None, |m| Some(m.as_str())) {
+                                    None => (),
+                                    Some(m) => self.header_map.push(HeaderMap {
+                                        key: format!("{:}", m),
+                                        index: column,
+                                    }),
+                                },
+                                None => (),
+                            },
                         }
                     }
                 }
             }
-            if !skip_row {
-                items.push(template);
+        }
+        println!("Trovato: {:?}", self.header_map);
+    }
+
+    pub fn parse_xlsx(&mut self) -> Vec<Item> {
+        let mut items: Vec<Item> = Vec::new();
+
+        /* Find data in source with column position find above */
+        if let Some(Ok(range)) = self.workbook.worksheet_range("Sheet1") {
+            let (rw, _) = range.get_size();
+            for row in 0..rw {
+                let mut template = Item::default();
+                let mut skip_row = false;
+                for header_label in &self.header_map {
+                    // this row contain a header, so we should skip it.
+                    if let Some(DataType::String(value)) = range.get((row, header_label.index)) {
+                        match header_label.key.to_lowercase().as_str() {
+                            "designator" => {
+                                if value.to_lowercase() == header_label.key || value.is_empty() {
+                                    println!("skip: [{:?}]", value);
+                                    skip_row = true;
+                                    continue;
+                                }
+                                template.designator = value
+                                    .split(",")
+                                    .map(|m| m.trim().to_string())
+                                    .collect::<Vec<_>>();
+
+                                let des = template.designator.first().unwrap();
+                                template.category = guess_category(des.trim());
+                                template.measure_unit = detect_measure_unit(des.trim());
+                            }
+                            "comment" => {
+                                template.comment = value.clone();
+                                template.base_exp = convert_comment_to_value(value);
+                            }
+                            "description" => {
+                                template.description = value.clone();
+                            }
+                            "footprint" => {
+                                template.footprint = value.clone();
+                            }
+                            "layer" | "mounttechnoloy" | "mounting_technoloy" => {
+                                template.extra.push(ExtraCol {
+                                    label: header_label.key.clone(),
+                                    value: value.to_uppercase(),
+                                    index: header_label.index,
+                                });
+                            }
+                            _ => {
+                                template.extra.push(ExtraCol {
+                                    label: header_label.key.clone(),
+                                    value: value.clone(),
+                                    index: header_label.index,
+                                });
+                            }
+                        }
+                    }
+                }
+                if !skip_row {
+                    items.push(template);
+                }
             }
         }
+        return items;
     }
-    return items;
+}
+
+impl Parser for DataParser {
+    fn new(filename: &'static str) -> DataParser {
+        println!("Parse: {}", filename);
+        let workbook = match open_workbook_auto(filename) {
+            Ok(wk) => wk,
+            Err(error) => panic!("Error while parsing file: {:?}", error),
+        };
+
+        DataParser {
+            header_map: Vec::new(),
+            workbook: workbook,
+        }
+    }
+    fn headers(self) -> Vec<HeaderMap> {
+        self.header_map.clone()
+    }
+    fn xlsx(mut self) -> Vec<Item> {
+        self.find_header();
+        self.parse_xlsx()
+    }
 }
 
 fn report() {
