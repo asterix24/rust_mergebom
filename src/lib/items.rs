@@ -1,7 +1,6 @@
 use calamine::{open_workbook_auto, DataType, Reader, Sheets};
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::collections::{hash_map::Entry, HashMap};
 
 use super::utils::{convert_comment_to_value, detect_measure_unit, guess_category};
 
@@ -11,7 +10,7 @@ struct ExtraCol {
     value: String,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Clone)]
 pub struct Item {
     unique_id: String,
     category: String,
@@ -30,7 +29,6 @@ pub struct HeaderMap {
     key: String,
     index: usize,
 }
-
 pub struct DataParser {
     header_map: Vec<HeaderMap>,
     workbook: Sheets,
@@ -179,29 +177,47 @@ impl DataParser {
 
     pub fn sets(&mut self, data: &Vec<Item>) -> Vec<Item> {
         let mut items: Vec<Item> = Vec::new();
-        let mut item_sets: HashMap<String, Vec<Item>> = HashMap::new();
         for row in data {
-            match item_sets.entry(row.unique_id.clone()) {
-                Entry::Occupied(mut o) => {
-                    o.get_mut().push(row.clone());
+            match items.iter().position(|m| m.unique_id == row.unique_id) {
+                Some(cc) => {
+                    let mut des: Vec<String> = Vec::new();
+                    des.append(&mut items[cc].designator.clone());
+                    des.append(&mut row.designator.clone());
+                    items[cc].designator = des;
+                    println!("{:?}", items[cc].designator);
                 }
-                Entry::Vacant(v) => {
-                    v.insert(vec![row.clone(); 1]);
-                }
-            };
-        }
-
-        for (k, v) in item_sets {
-            let template: Item = Item::default();
-            println!("{}", k);
-            for d in v {
-                println!("\t{:?} {:?} {:?}", d.category, d.designator, d.extra);
+                _ => items.push(Item { ..row.clone() }),
             }
-            items.push(template)
         }
         return items;
     }
 }
+
+impl PartialEq for Item {
+    fn eq(&self, other: &Self) -> bool {
+        self.unique_id == other.unique_id
+    }
+}
+
+impl std::fmt::Debug for Item {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "Item:\n\tunique_id: {}\n\tcategory: {}\n\tbase_exp: {:?}\n\tfmt_value: {}\n\tmeasure_unit: {}\n\tdesignator: {:?}\n\tcomment:{}\n\tfootprint:{}\n\tdescription:{}\n\textra: {:?}",
+            self.unique_id,
+            self.category,
+            self.base_exp,
+            self.fmt_value,
+            self.measure_unit,
+            self.designator,
+            self.comment,
+            self.footprint,
+            self.description,
+            self.extra
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,4 +280,14 @@ mod tests {
 
     #[test]
     fn test_extra_col() {}
+    #[test]
+    fn test_merge() {
+        let len_check = vec![2, 4, 2, 4, 3];
+        let data: DataParser = DataParser::new("test_data/bom_merge.xlsx");
+        let items = data.xlsx();
+        assert_eq!(len_check.len(), items.len());
+        for (n, c) in items.iter().enumerate() {
+            assert_eq!(c.designator.len(), len_check[n]);
+        }
+    }
 }
