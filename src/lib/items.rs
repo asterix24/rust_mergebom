@@ -51,12 +51,14 @@ impl DataParser {
         self.find_header();
         self.header_map.clone()
     }
-    pub fn xlsx(mut self) -> Vec<Item> {
+
+    pub fn collect(mut self) -> Vec<Item> {
         self.find_header();
         let data = self.parse_xlsx();
-        self.sets(&data)
+        self.sets(data)
     }
-    pub fn find_header(&mut self) {
+
+    fn find_header(&mut self) {
         lazy_static! {
             static ref RE: Regex = Regex::new(r"[NOTE|CODE]\s(.*)").unwrap();
         }
@@ -196,7 +198,7 @@ impl DataParser {
         return items;
     }
 
-    pub fn sets(&mut self, data: &Vec<Item>) -> Vec<Item> {
+    pub fn sets(self, data: Vec<Item>) -> Vec<Item> {
         let mut items: Vec<Item> = Vec::new();
         for row in data {
             match items.iter().position(|m| m.unique_id == row.unique_id) {
@@ -211,6 +213,21 @@ impl DataParser {
             }
         }
         return items;
+    }
+}
+
+pub fn categories(data: &Vec<Item>) -> Vec<String> {
+    let mut cat: Vec<String> = Vec::new();
+    for c in data {
+        if !cat.contains(&c.category) {
+            cat.push(c.category.clone());
+        }
+    }
+    cat
+}
+pub fn dump(data: &Vec<Item>) {
+    for i in data {
+        println!("{:?}", i);
     }
 }
 
@@ -305,7 +322,7 @@ mod tests {
     fn test_merge() {
         let len_check = vec![2, 2, 2, 2, 4, 1, 2];
         let data: DataParser = DataParser::new("test_data/bom_merge.xlsx");
-        let items = data.xlsx();
+        let items = data.collect();
         assert_eq!(len_check.len(), items.len());
         for (n, c) in items.iter().enumerate() {
             assert_eq!(c.designator.len(), len_check[n]);
