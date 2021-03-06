@@ -68,7 +68,7 @@ impl DataParser {
                 for column in 0..cl {
                     if let Some(DataType::String(s)) = range.get((row, column)) {
                         match s.to_lowercase().as_str() {
-                            "quantity" | "designator" | "comment" | "footprint" | "description"
+                            "designator" | "comment" | "footprint" | "description"
                             | "mounttechnology" | "mount_technology" => {
                                 self.header_map.push(HeaderMap {
                                     key: String::from(s.to_lowercase()),
@@ -110,46 +110,67 @@ impl DataParser {
                 let mut skip_row = false;
                 for header_label in &self.header_map {
                     // this row contain a header, so we should skip it.
-                    if let Some(DataType::String(value)) = range.get((row, header_label.index)) {
-                        match header_label.key.to_lowercase().as_str() {
-                            "designator" => {
-                                if value.to_lowercase() == header_label.key || value.is_empty() {
-                                    println!("skip: [{:?}]", value);
-                                    skip_row = true;
-                                    continue;
-                                }
-                                template.designator = value
-                                    .split(",")
-                                    .map(|m| m.trim().to_string())
-                                    .collect::<Vec<_>>();
+                    match range.get((row, header_label.index)) {
+                        Some(DataType::String(value)) => {
+                            match header_label.key.to_lowercase().as_str() {
+                                "designator" => {
+                                    if value.to_lowercase() == header_label.key || value.is_empty()
+                                    {
+                                        println!("skip: [{:?}]", value);
+                                        skip_row = true;
+                                        continue;
+                                    }
+                                    template.designator = value
+                                        .split(",")
+                                        .map(|m| m.trim().to_string())
+                                        .collect::<Vec<_>>();
 
-                                let des = template.designator.first().unwrap();
-                                template.category = guess_category(des.trim());
-                                template.measure_unit = detect_measure_unit(des.trim());
-                            }
-                            "comment" => {
-                                template.comment = value.clone();
-                                template.base_exp = convert_comment_to_value(value);
-                            }
-                            "description" => {
-                                template.description = value.clone();
-                            }
-                            "footprint" => {
-                                template.footprint = value.clone();
-                            }
-                            "layer" | "mounttechnoloy" | "mounting_technoloy" => {
-                                template.extra.push(ExtraCol {
-                                    label: header_label.key.clone(),
-                                    value: value.to_uppercase(),
-                                });
-                            }
-                            _ => {
-                                template.extra.push(ExtraCol {
-                                    label: header_label.key.clone(),
-                                    value: value.clone(),
-                                });
+                                    let des = template.designator.first().unwrap();
+                                    template.category = guess_category(des.trim());
+                                    template.measure_unit = detect_measure_unit(des.trim());
+                                }
+                                "comment" => {
+                                    template.comment = value.clone();
+                                    template.base_exp = convert_comment_to_value(value);
+                                }
+                                "description" => {
+                                    template.description = value.clone();
+                                }
+                                "footprint" => {
+                                    template.footprint = value.clone();
+                                }
+                                "layer" | "mounttechnoloy" | "mounting_technoloy" => {
+                                    template.extra.push(ExtraCol {
+                                        label: header_label.key.clone(),
+                                        value: value.to_uppercase(),
+                                    });
+                                }
+                                _ => {
+                                    template.extra.push(ExtraCol {
+                                        label: header_label.key.clone(),
+                                        value: value.clone(),
+                                    });
+                                }
                             }
                         }
+                        Some(DataType::Int(value)) => {
+                            template.extra.push(ExtraCol {
+                                label: header_label.key.clone(),
+                                value: value.to_string(),
+                            });
+                        }
+
+                        Some(DataType::Float(value)) => {
+                            template.extra.push(ExtraCol {
+                                label: header_label.key.clone(),
+                                value: value.to_string(),
+                            });
+                        }
+                        Some(DataType::Empty) => (), //println!("Empty cell.. skip"),
+                        _ => println!(
+                            "Invalid data type..[{:?}]",
+                            range.get((row, header_label.index))
+                        ),
                     }
                 }
                 if !skip_row {
@@ -282,12 +303,13 @@ mod tests {
     fn test_extra_col() {}
     #[test]
     fn test_merge() {
-        let len_check = vec![2, 4, 2, 4, 3];
+        let len_check = vec![2, 2, 2, 2, 4, 1, 2];
         let data: DataParser = DataParser::new("test_data/bom_merge.xlsx");
         let items = data.xlsx();
         assert_eq!(len_check.len(), items.len());
         for (n, c) in items.iter().enumerate() {
             assert_eq!(c.designator.len(), len_check[n]);
+            println!("{:?}", c);
         }
     }
 }
