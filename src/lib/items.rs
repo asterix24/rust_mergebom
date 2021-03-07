@@ -28,9 +28,9 @@ pub struct Item {
 pub struct HeaderMap {
     key: String,
     index: usize,
+    order: usize,
 }
 pub struct DataParser {
-    header_map: Vec<HeaderMap>,
     workbook: Sheets,
 }
 
@@ -42,23 +42,16 @@ impl DataParser {
             Err(error) => panic!("Error while parsing file: {:?}", error),
         };
 
-        DataParser {
-            header_map: Vec::new(),
-            workbook: workbook,
-        }
-    }
-    pub fn headers(mut self) -> Vec<HeaderMap> {
-        self.find_header();
-        self.header_map.clone()
+        DataParser { workbook: workbook }
     }
 
-    pub fn collect(mut self) -> Vec<Item> {
-        self.find_header();
-        let data = self.parse_xlsx();
+    pub fn parse(mut self, header_map: &Vec<HeaderMap>) -> Vec<Item> {
+        let data = self.parse_xlsx(&header_map);
         self.sets(data)
     }
 
-    fn find_header(&mut self) {
+    pub fn headers(&mut self) -> Vec<HeaderMap> {
+        let mut header_map: Vec<HeaderMap> = Vec::new();
         lazy_static! {
             static ref RE: Regex = Regex::new(r"[NOTE|CODE]\s(.*)").unwrap();
         }
@@ -66,17 +59,36 @@ impl DataParser {
         /* Search headers in source files */
         if let Some(Ok(range)) = self.workbook.worksheet_range("Sheet1") {
             let (rw, cl) = range.get_size();
+            let extra_col: usize = 0;
             for row in 0..rw {
                 for column in 0..cl {
                     if let Some(DataType::String(s)) = range.get((row, column)) {
                         match s.to_lowercase().as_str() {
-                            "designator" | "comment" | "footprint" | "description"
-                            | "mounttechnology" | "mount_technology" => {
-                                self.header_map.push(HeaderMap {
-                                    key: String::from(s.to_lowercase()),
-                                    index: column,
-                                })
-                            }
+                            "designator" => header_map.push(HeaderMap {
+                                key: String::from("Designator"),
+                                index: column,
+                                order: 0,
+                            }),
+                            "comment" => header_map.push(HeaderMap {
+                                key: String::from("Comment"),
+                                index: column,
+                                order: 1,
+                            }),
+                            "footprint" => header_map.push(HeaderMap {
+                                key: String::from("Footprint"),
+                                index: column,
+                                order: 2,
+                            }),
+                            "description" => header_map.push(HeaderMap {
+                                key: String::from("Description"),
+                                index: column,
+                                order: 3,
+                            }),
+                            "mounttechnology" | "mount_technology" => header_map.push(HeaderMap {
+                                key: String::from("Mount Tecnology"),
+                                index: column,
+                                order: 4,
+                            }),
                             _ => {
                                 // println!("{:?}", s);
                                 match RE.captures(s.as_ref()) {
@@ -84,9 +96,10 @@ impl DataParser {
                                         if let Some(m) =
                                             cc.get(1).map_or(None, |m| Some(m.as_str()))
                                         {
-                                            self.header_map.push(HeaderMap {
-                                                key: format!("{:}", m),
+                                            header_map.push(HeaderMap {
+                                                key: format!("Alt. {:}", m),
                                                 index: column,
+                                                order: 4 + extra_col,
                                             })
                                         }
                                     }
@@ -98,10 +111,11 @@ impl DataParser {
                 }
             }
         }
-        println!("Trovato: {:?}", self.header_map);
+        println!("Trovato: {:?}", header_map);
+        header_map
     }
 
-    pub fn parse_xlsx(&mut self) -> Vec<Item> {
+    pub fn parse_xlsx(&mut self, header_map: &Vec<HeaderMap>) -> Vec<Item> {
         let mut items: Vec<Item> = Vec::new();
 
         /* Find data in source with column position find above */
@@ -110,14 +124,13 @@ impl DataParser {
             for row in 0..rw {
                 let mut template = Item::default();
                 let mut skip_row = false;
-                for header_label in &self.header_map {
+                for header_label in header_map {
                     // this row contain a header, so we should skip it.
                     match range.get((row, header_label.index)) {
                         Some(DataType::String(value)) => {
                             match header_label.key.to_lowercase().as_str() {
                                 "designator" => {
-                                    if value.to_lowercase() == header_label.key || value.is_empty()
-                                    {
+                                    if *value == header_label.key || value.is_empty() {
                                         println!("skip: [{:?}]", value);
                                         skip_row = true;
                                         continue;
@@ -214,6 +227,15 @@ impl DataParser {
         }
         return items;
     }
+}
+
+pub fn headers_to_str(header_map: &Vec<HeaderMap>) -> Vec<String> {
+    let mut hdr: Vec<String> = Vec::new();
+    header_map.clone().sort_by_key(|x| x.order);
+    for i in header_map.clone() {
+        hdr.push(i.key);
+    }
+    hdr
 }
 
 pub fn categories(data: &Vec<Item>) -> Vec<String> {

@@ -1,7 +1,7 @@
 use clap::{App, Arg};
 mod lib;
-use lib::items::{categories, dump, DataParser, Item};
-use lib::outjob::OutJob;
+use lib::items::{categories, dump, headers_to_str, DataParser, HeaderMap, Item};
+use lib::outjob::OutJobXlsx;
 
 fn main() {
     let matches = App::new("Rust MergeBom")
@@ -18,15 +18,21 @@ fn main() {
 
     let bom = matches.values_of("BOMFile").unwrap();
     for i in bom {
-        let data: DataParser = DataParser::new(i);
-        let v: Vec<Item> = data.collect();
+        let mut data: DataParser = DataParser::new(i);
+        let hdr: Vec<HeaderMap> = data.headers();
+        println!("-> {:?}", hdr);
+
+        let v: Vec<Item> = data.parse(&hdr);
         let c: Vec<String> = categories(&v);
-        for i in c {
+        let h: Vec<String> = headers_to_str(&hdr);
+        dump(&v);
+        for i in c.iter() {
             println!("-> {}", i);
         }
-        dump(&v);
+        for i in h.iter() {
+            println!("=> {}", i);
+        }
+        let out = OutJobXlsx::new("merged_bom");
+        out.write(&h, &v, &c);
     }
-
-    let out = OutJob::new("merge_bom.xlsx");
-    //out.write();
 }

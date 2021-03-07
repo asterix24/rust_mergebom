@@ -121,7 +121,7 @@ pub fn guess_category<S: AsRef<str>>(designator: S) -> String {
             "TR" => String::from("transformes"),
             "Y" => String::from("cristal"),
             "U" => String::from("ic"),
-            _ => panic!("Invalid category"),
+            _ => panic!("Invalid category[{:#?}]", designator.as_ref()),
         },
     }
 }
