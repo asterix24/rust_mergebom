@@ -1,12 +1,6 @@
-use super::items::Item;
+use super::items::{Category, HeaderMap, Item};
 use xlsxwriter::*;
 
-enum CellFmt {
-    Default,
-    Header,
-    Category,
-    Qty,
-}
 pub struct OutJobXlsx {
     wk: Workbook,
     curr_row: u32,
@@ -19,7 +13,7 @@ impl OutJobXlsx {
             curr_row: 0,
         }
     }
-    pub fn write(mut self, headers: &Vec<String>, data: &Vec<Item>, categories: &Vec<String>) {
+    pub fn write(mut self, headers: &Vec<HeaderMap>, data: &Vec<Item>, categories: Vec<Category>) {
         let fmt_defalt = self.wk.add_format().set_font_size(10.0).set_text_wrap();
         let fmt_header = self
             .wk
@@ -48,7 +42,12 @@ impl OutJobXlsx {
 
         let mut column: u16 = 0;
         for label in headers.iter() {
-            match sheet.write_string(self.curr_row, column, label, Some(&fmt_header)) {
+            match sheet.write_string(
+                self.curr_row,
+                column,
+                format!("{:?}", label).as_str(),
+                Some(&fmt_header),
+            ) {
                 Ok(m) => m,
                 _ => panic!("Error!"),
             };

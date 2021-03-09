@@ -1,3 +1,4 @@
+use super::items::Category;
 use lazy_static::lazy_static;
 use regex::Regex;
 
@@ -100,27 +101,27 @@ pub fn convert_comment_to_value(comment: &str) -> (f32, i32) {
     }
 }
 
-pub fn guess_category<S: AsRef<str>>(designator: S) -> String {
+pub fn guess_category<S: AsRef<str>>(designator: S) -> Category {
     lazy_static! {
         static ref RE: Regex = Regex::new(r"^([a-zA-Z_]{1,3})").unwrap();
     }
 
     match RE.captures(designator.as_ref()) {
-        None => String::from("ivalid"),
+        None => Category::IVALID,
         Some(cc) => match cc.get(1).map_or("", |m| m.as_str()).as_ref() {
-            "J" | "X" | "P" | "SIM" => String::from("connectors"),
+            "J" | "X" | "P" | "SIM" => Category::Connectors,
             "S" | "SCR" | "SPA" | "BAT" | "BUZ" | "BT" | "B" | "SW" | "MP" | "K" => {
-                String::from("mechanicals")
+                Category::Mechanicals
             }
-            "F" | "FU" => String::from("fuses"),
-            "R" | "RN" | "R_G" => String::from("resistors"),
-            "C" | "CAP" => String::from("capacitors"),
-            "D" | "DZ" => String::from("diode"),
-            "L" => String::from("inductors"),
-            "Q" => String::from("transistor"),
-            "TR" => String::from("transformes"),
-            "Y" => String::from("cristal"),
-            "U" => String::from("ic"),
+            "F" | "FU" => Category::Fuses,
+            "R" | "RN" | "R_G" => Category::Resistors,
+            "C" | "CAP" => Category::Capacitors,
+            "D" | "DZ" => Category::Diode,
+            "L" => Category::Inductors,
+            "Q" => Category::Transistor,
+            "TR" => Category::Transformes,
+            "Y" => Category::Cristal,
+            "U" => Category::IC,
             _ => panic!("Invalid category[{:#?}]", designator.as_ref()),
         },
     }

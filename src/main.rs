@@ -1,13 +1,14 @@
 use clap::{App, Arg};
 mod lib;
-use lib::items::{categories, dump, headers_to_str, DataParser, HeaderMap, Item};
+use lib::items::Category;
+use lib::items::{categories, dump, DataParser, HeaderMap, Item};
 use lib::outjob::OutJobXlsx;
 
 fn main() {
     let matches = App::new("Rust MergeBom")
         .version("0.1.0")
         .author("Daniele Basile <asterix24@gmail.com>")
-        .about("Pretty merger and formatter for Bill Of Materials.")
+        .about("Pretty merger and formatter Bill Of Materials.")
         .arg(
             Arg::with_name("BOMFile")
                 .help("BOM to Merge")
@@ -23,16 +24,15 @@ fn main() {
         println!("-> {:?}", hdr);
 
         let v: Vec<Item> = data.parse(&hdr);
-        let c: Vec<String> = categories(&v);
-        let h: Vec<String> = headers_to_str(&hdr);
+        let c: Vec<Category> = categories(&v);
         dump(&v);
         for i in c.iter() {
-            println!("-> {}", i);
+            println!("-> {:?}", i);
         }
-        for i in h.iter() {
-            println!("=> {}", i);
+        for i in hdr.iter() {
+            println!("=> {:?}", i);
         }
         let out = OutJobXlsx::new("merged_bom");
-        out.write(&h, &v, &c);
+        out.write(&hdr, &v, c.clone());
     }
 }
