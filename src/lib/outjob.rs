@@ -1,4 +1,5 @@
-use super::items::{Category, HeaderMap, Item};
+use super::items::{Category, Header, HeaderMap, Item};
+use super::utils::value_to_eng_notation;
 use xlsxwriter::*;
 
 pub struct OutJobXlsx {
@@ -14,7 +15,12 @@ impl OutJobXlsx {
         }
     }
     pub fn write(mut self, headers: &Vec<HeaderMap>, data: &Vec<Item>, categories: Vec<Category>) {
-        let fmt_defalt = self.wk.add_format().set_font_size(10.0).set_text_wrap();
+        let fmt_defalt = self
+            .wk
+            .add_format()
+            .set_text_wrap()
+            .set_font_size(10.0)
+            .set_text_wrap();
         let fmt_header = self
             .wk
             .add_format()
@@ -41,130 +47,101 @@ impl OutJobXlsx {
         };
 
         let mut column: u16 = 0;
-        for label in headers.iter() {
-            match sheet.write_string(
-                self.curr_row,
-                column,
-                format!("{:?}", label).as_str(),
-                Some(&fmt_header),
-            ) {
-                Ok(m) => m,
-                _ => panic!("Error!"),
-            };
+        sheet
+            .write_string(self.curr_row, column, "Qty", Some(&fmt_qty))
+            .unwrap();
+        column += 1;
+        for hdr in headers.iter() {
+            sheet
+                .write_string(
+                    self.curr_row,
+                    column,
+                    format!("{}", hdr.label).as_str(),
+                    Some(&fmt_header),
+                )
+                .unwrap();
             column += 1;
         }
         self.curr_row += 1;
+        for i in categories.iter() {
+            // Write Category Header
+            sheet
+                .merge_range(
+                    self.curr_row,
+                    0,
+                    self.curr_row,
+                    headers.len() as u16,
+                    format!("{:?}", i).as_str(),
+                    Some(&fmt_category),
+                )
+                .unwrap();
+            self.curr_row += 1;
+            for item in data.iter().filter(|m| m.category == *i) {
+                // Write Qty
+                sheet
+                    .write_string(
+                        self.curr_row,
+                        Header::Quantity as u16,
+                        item.designator.len().to_string().as_str(),
+                        Some(&fmt_qty),
+                    )
+                    .unwrap();
+                // Write designator
+                sheet
+                    .write_string(
+                        self.curr_row,
+                        Header::Designator as u16,
+                        item.designator.join(", ").as_str(),
+                        Some(&fmt_defalt),
+                    )
+                    .unwrap();
+                // Write Comment
+                sheet
+                    .write_string(
+                        self.curr_row,
+                        Header::Comment as u16,
+                        value_to_eng_notation(
+                            item.base_exp.0,
+                            item.base_exp.1,
+                            item.measure_unit.as_str(),
+                        )
+                        .as_str(),
+                        Some(&fmt_defalt),
+                    )
+                    .unwrap();
+                // Write Footprint
+                sheet
+                    .write_string(
+                        self.curr_row,
+                        Header::Footprint as u16,
+                        item.footprint.as_str(),
+                        Some(&fmt_defalt),
+                    )
+                    .unwrap();
+                // Write Description
+                sheet
+                    .write_string(
+                        self.curr_row,
+                        Header::Description as u16,
+                        item.description.as_str(),
+                        Some(&fmt_defalt),
+                    )
+                    .unwrap();
+                // Write extra column
+                for (n, m) in item.extra.iter().enumerate() {
+                    sheet
+                        .write_string(
+                            self.curr_row,
+                            m.label as u16 + n as u16,
+                            m.value.as_str(),
+                            Some(&fmt_defalt),
+                        )
+                        .unwrap();
+                }
+                self.curr_row += 1;
+            }
+        }
 
-        match self.wk.close() {
-            Ok(m) => m,
-            _ => panic!("Error! while close workbook!"),
-        };
+        self.wk.close().unwrap();
     }
 }
-
-//         let mut row_curr: u32 = 10;
-//         let mut col: u16 = 0;
-//         for label in HEADERS.iter() {
-//             match sheet1.write_string(row_curr, col, label, Some(&hdr_fmt)) {
-//                 Ok(m) => m,
-//                 _ => panic!("Error!"),
-//             };
-//             col += 1;
-//         }
-//         row_curr += 1;
-//         for (category, items) in data {
-//             println!(">>>> {:?}", category);
-//             match sheet1.merge_range(
-//                 row_curr,
-//                 0,
-//                 row_curr,
-//                 HEADERS.len() as u16,
-//                 category.as_str(),
-//                 Some(&merge_fmt),
-//             ) {
-//                 Ok(m) => m,
-//                 _ => panic!("Error!"),
-//             };
-
-//             row_curr += 1;
-//             //let sorted_item = items.sort_by_key(|k| Ord(pow(k.base_exp[0], k.base_exp[1])));
-//             for unique_row in items {
-//                 for (unique_key, parts) in unique_row {
-//                     //println!("{:?} {:?}", unique_key, parts.len());
-//                     let row_elem = match parts.first() {
-//                         Some(r) => r,
-//                         _ => panic!("empty part list"),
-//                     };
-//                     for label in headers.iter() {
-//                         match label.as_str() {
-//                             "quantity" => {
-//                                 //println!("{:?}", parts.len());
-//                                 match sheet1.write_string(
-//                                     row_curr,
-//                                     0,
-//                                     parts.len().to_string().as_str(),
-//                                     Some(&tot_fmt),
-//                                 ) {
-//                                     Ok(m) => m,
-//                                     _ => panic!("Error!"),
-//                                 };
-//                             }
-//                             "designator" => {
-//                                 let mut ss: Vec<String> = Vec::new();
-//                                 for s in parts.iter() {
-//                                     ss.push(s.designator.clone());
-//                                 }
-//                                 match sheet1.write_string(
-//                                     row_curr,
-//                                     1,
-//                                     ss.join(", ").as_str(),
-//                                     Some(&default_fmt),
-//                                 ) {
-//                                     Ok(m) => m,
-//                                     _ => panic!("Error!"),
-//                                 };
-//                             }
-//                             "comment" => {
-//                                 match sheet1.write_string(
-//                                     row_curr,
-//                                     2,
-//                                     row_elem.comment.as_str(),
-//                                     Some(&default_fmt),
-//                                 ) {
-//                                     Ok(m) => m,
-//                                     _ => panic!("Error!"),
-//                                 };
-//                             }
-//                             "footprint" => {
-//                                 match sheet1.write_string(
-//                                     row_curr,
-//                                     3,
-//                                     row_elem.footprint.as_str(),
-//                                     Some(&default_fmt),
-//                                 ) {
-//                                     Ok(m) => m,
-//                                     _ => panic!("Error!"),
-//                                 };
-//                             }
-//                             "description" => {
-//                                 match sheet1.write_string(
-//                                     row_curr,
-//                                     4,
-//                                     row_elem.description.as_str(),
-//                                     Some(&default_fmt),
-//                                 ) {
-//                                     Ok(m) => m,
-//                                     _ => panic!("Error!"),
-//                                 };
-//                             }
-//                             _ => println!("Invalid category"),
-//                         }
-//                     }
-//                     row_curr += 1;
-//                 }
-//             }
-//         }
-
-//     }
-//     }
-// }

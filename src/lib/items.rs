@@ -5,9 +5,9 @@ use regex::Regex;
 use super::utils::{convert_comment_to_value, detect_measure_unit, guess_category};
 
 #[derive(Debug, Clone)]
-struct ExtraCol {
-    label: Header,
-    value: String,
+pub struct ExtraCol {
+    pub label: Header,
+    pub value: String,
 }
 #[derive(Debug, PartialEq, PartialOrd, Clone, Eq, Ord)]
 pub enum Category {
@@ -40,22 +40,22 @@ pub enum Header {
 #[derive(Debug)]
 pub struct Item {
     unique_id: String,
-    category: Category,
-    base_exp: (f32, i32),
-    fmt_value: String,
-    measure_unit: String,
-    designator: Vec<String>,
-    comment: String,
-    footprint: String,
-    description: String,
-    extra: Vec<ExtraCol>,
+    pub category: Category,
+    pub base_exp: (f32, i32),
+    pub measure_unit: String,
+    pub designator: Vec<String>,
+    pub comment: String,
+    pub footprint: String,
+    pub description: String,
+    pub layer: Vec<String>,
+    pub extra: Vec<ExtraCol>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct HeaderMap {
-    key: Header,
-    label: String,
-    index: usize,
+    pub key: Header,
+    pub label: String,
+    pub index: usize,
 }
 pub struct DataParser {
     workbook: Sheets,
@@ -115,6 +115,11 @@ impl DataParser {
                                 label: String::from("Mount Technology"),
                                 index: column,
                             }),
+                            "layer" => header_map.push(HeaderMap {
+                                key: Header::Layer,
+                                label: String::from("Layer"),
+                                index: column,
+                            }),
                             _ => {
                                 // println!("{:?}", ;
                                 match RE.captures(s.as_ref()) {
@@ -153,12 +158,12 @@ impl DataParser {
                     unique_id: String::new(),
                     category: Category::IVALID,
                     base_exp: (0.0, 0),
-                    fmt_value: String::new(),
                     measure_unit: String::new(),
                     designator: vec![],
                     comment: String::new(),
                     footprint: String::new(),
                     description: String::new(),
+                    layer: vec![],
                     extra: vec![],
                 };
                 let mut skip_row = false;
@@ -192,10 +197,7 @@ impl DataParser {
                                 template.footprint = value.clone();
                             }
                             Header::Layer | Header::MountTecnology => {
-                                template.extra.push(ExtraCol {
-                                    label: header_label.key.clone(),
-                                    value: value.to_uppercase(),
-                                });
+                                template.layer.push(value.clone());
                             }
                             _ => {
                                 template.extra.push(ExtraCol {
@@ -256,7 +258,8 @@ impl DataParser {
                     des.append(&mut items[cc].designator.clone());
                     des.append(&mut row.designator.clone());
                     items[cc].designator = des;
-                    println!("{:?}", items[cc].designator);
+
+                    //TODO: Merge all columns
                 }
                 _ => items.push(Item { ..row }),
             }
@@ -292,58 +295,25 @@ mod tests {
     use super::*;
     #[test]
     fn test_header_map() {
-        let header_map_check: Vec<HeaderMap> = vec![
-            HeaderMap {
-                key: String::from("quantity"),
-                index: 0,
-            },
-            HeaderMap {
-                key: String::from("designator"),
-                index: 1,
-            },
-            HeaderMap {
-                key: String::from("comment"),
-                index: 2,
-            },
-            HeaderMap {
-                key: String::from("footprint"),
-                index: 3,
-            },
-            HeaderMap {
-                key: String::from("description"),
-                index: 4,
-            },
-            HeaderMap {
-                key: String::from("mounttechnology"),
-                index: 8,
-            },
-            HeaderMap {
-                key: String::from("123"),
-                index: 10,
-            },
-            HeaderMap {
-                key: String::from("farnell"),
-                index: 11,
-            },
-            HeaderMap {
-                key: String::from("mouser"),
-                index: 12,
-            },
-            HeaderMap {
-                key: String::from("description"),
-                index: 13,
-            },
-            HeaderMap {
-                key: String::from("digikey"),
-                index: 14,
-            },
+        let header_map_check = [
+            ("quantity", 0),
+            ("designator", 1),
+            ("comment", 2),
+            ("footprint", 3),
+            ("description", 4),
+            ("mounttechnology", 8),
+            ("123", 10),
+            ("farnell", 11),
+            ("mouser", 12),
+            ("description", 13),
+            ("digikey", 14),
         ];
         let data: DataParser = DataParser::new("test_data/bom0.xlsx");
         let hdr_map: Vec<HeaderMap> = data.headers();
         assert_eq!(hdr_map.len(), header_map_check.len());
         for (n, i) in hdr_map.iter().enumerate() {
-            assert_eq!(i.key, header_map_check.get(n).unwrap().key);
-            assert_eq!(i.index, header_map_check.get(n).unwrap().index);
+            assert_eq!(i.key, header_map_check(i.0));
+            assert_eq!(i.index, header_map_check(i.1));
         }
     }
 

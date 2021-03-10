@@ -38,7 +38,7 @@ pub fn value_to_eng_notation(base: f32, exp: i32, unit: &str) -> String {
             _ => value,
         }
     } else {
-        value = format!("{}{}", value, unitletter);
+        value = format!("{}{}{}", value, unitletter, unit);
     }
     String::from(value)
 }

@@ -1,7 +1,7 @@
 use clap::{App, Arg};
 mod lib;
 use lib::items::Category;
-use lib::items::{categories, dump, DataParser, HeaderMap, Item};
+use lib::items::{categories, DataParser, HeaderMap, Item};
 use lib::outjob::OutJobXlsx;
 
 fn main() {
@@ -25,13 +25,13 @@ fn main() {
 
         let v: Vec<Item> = data.parse(&hdr);
         let c: Vec<Category> = categories(&v);
-        dump(&v);
-        for i in c.iter() {
-            println!("-> {:?}", i);
-        }
-        for i in hdr.iter() {
-            println!("=> {:?}", i);
-        }
+        //dump(&v);
+        // for i in c.iter() {
+        //     println!("-> {:?}", i);
+        // }
+        // for i in hdr.iter() {
+        //     println!("=> {:?}", i);
+        // }
         let out = OutJobXlsx::new("merged_bom");
         out.write(&hdr, &v, c.clone());
     }
