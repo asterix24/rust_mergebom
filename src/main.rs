@@ -1,8 +1,9 @@
 use clap::{App, Arg};
 mod lib;
 use lib::items::Category;
-use lib::items::{categories, DataParser, HeaderMap, Item};
+use lib::items::{categories, stats, DataParser, HeaderMap, Item};
 use lib::outjob::OutJobXlsx;
+use lib::ASCII_LOGO;
 
 fn main() {
     let matches = App::new("Rust MergeBom")
@@ -17,6 +18,8 @@ fn main() {
         )
         .get_matches();
 
+    println!("{}", ASCII_LOGO);
+
     let bom = matches.values_of("BOMFile").unwrap();
     for i in bom {
         let mut data: DataParser = DataParser::new(i);
@@ -25,6 +28,9 @@ fn main() {
 
         let v: Vec<Item> = data.parse(&hdr);
         let c: Vec<Category> = categories(&v);
+        for x in stats(&v) {
+            println!("->\t{:?} {}", x.label, x.value);
+        }
         //dump(&v);
         // for i in c.iter() {
         //     println!("-> {:?}", i);
