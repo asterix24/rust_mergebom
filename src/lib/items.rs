@@ -15,7 +15,7 @@ pub struct ExtraCol {
     pub label: Header,
     pub value: String,
 }
-#[derive(Debug, PartialEq, PartialOrd, Clone, Eq, Ord, IntoEnumIterator)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Eq, Ord)]
 pub enum Category {
     Connectors,
     Mechanicals,
@@ -374,25 +374,25 @@ mod tests {
 
         let header_map_check = (
             [
-                (Header::Designator, "designator", 3),
-                (Header::Comment, "comment", 1),
-                (Header::Footprint, "footprint", 4),
-                (Header::Description, "description", 2),
+                (Header::Designator, "Designator", 3),
+                (Header::Comment, "Comment", 1),
+                (Header::Footprint, "Footprint", 4),
+                (Header::Description, "Description", 2),
             ],
             [
-                (Header::Designator, "designator", 1),
-                (Header::Comment, "comment", 2),
-                (Header::Footprint, "footprint", 3),
-                (Header::Description, "description", 4),
-                (Header::Extra, "farnell", 5),
-                (Header::Extra, "produzione", 6),
-                (Header::Extra, "digikey", 7),
+                (Header::Designator, "Designator", 1),
+                (Header::Comment, "Comment", 2),
+                (Header::Footprint, "Footprint", 3),
+                (Header::Description, "Description", 4),
+                (Header::Extra, "Code farnell", 5),
+                (Header::Extra, "Note produzione", 6),
+                (Header::Extra, "Code digikey", 7),
             ],
             [
-                (Header::Designator, "designator", 5),
-                (Header::Comment, "comment", 2),
-                (Header::Footprint, "footprint", 3),
-                (Header::Description, "description", 0),
+                (Header::Designator, "Designator", 5),
+                (Header::Comment, "Comment", 2),
+                (Header::Footprint, "Footprint", 3),
+                (Header::Description, "Description", 0),
             ],
         );
 
@@ -401,6 +401,7 @@ mod tests {
         assert_eq!(hdr_map.len(), header_map_check.0.len());
         for (n, i) in hdr_map.iter().enumerate() {
             assert_eq!(i.key, header_map_check.0[n].0);
+            assert_eq!(i.label, header_map_check.0[n].1);
             assert_eq!(i.index, header_map_check.0[n].2);
         }
 
@@ -409,6 +410,7 @@ mod tests {
         assert_eq!(hdr_map.len(), header_map_check.1.len());
         for (n, i) in hdr_map.iter().enumerate() {
             assert_eq!(i.key, header_map_check.1[n].0);
+            assert_eq!(i.label, header_map_check.1[n].1);
             assert_eq!(i.index, header_map_check.1[n].2);
         }
 
@@ -417,6 +419,7 @@ mod tests {
         assert_eq!(hdr_map.len(), header_map_check.2.len());
         for (n, i) in hdr_map.iter().enumerate() {
             assert_eq!(i.key, header_map_check.2[n].0);
+            assert_eq!(i.label, header_map_check.2[n].1);
             assert_eq!(i.index, header_map_check.2[n].2);
         }
     }
