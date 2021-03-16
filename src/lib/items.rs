@@ -1,6 +1,7 @@
 use calamine::{open_workbook_auto, DataType, Reader, Sheets};
 use lazy_static::lazy_static;
 use regex::Regex;
+
 use std::fmt;
 
 use super::utils::{convert_comment_to_value, detect_measure_unit, guess_category};
@@ -28,7 +29,6 @@ pub enum Category {
     Transformes,
     Cristal,
     IC,
-    UNKNOW,
     IVALID,
 }
 
@@ -79,7 +79,7 @@ pub struct DataParser {
 impl DataParser {
     pub fn new(filename: &str) -> DataParser {
         println!("Parse: {}", filename);
-        let mut sheet_name: String = String::new();
+        let sheet_name: String;
         let workbook = match open_workbook_auto(filename) {
             Ok(wk) => {
                 /* Search headers in source files */
@@ -87,15 +87,15 @@ impl DataParser {
                     Some(s) => s.clone(),
                     None => panic!("unable to get sheet names"),
                 };
-                println!("Sheets: {:}", sheet_name);
                 wk
             }
             Err(error) => panic!("Error while parsing file: {:?}", error),
         };
 
+        println!("Sheets: {}", sheet_name);
         DataParser {
-            workbook: workbook,
-            sheet_name: sheet_name,
+            workbook,
+            sheet_name,
         }
     }
 
@@ -332,27 +332,22 @@ pub fn categories(data: &Vec<Item>) -> Vec<Category> {
 }
 
 pub fn stats(data: &Vec<Item>) -> Vec<Stats> {
-    let mut st: Vec<Stats> = Vec::new();
-    // let mut t = 0;
-    // for c in Category::into_enum_iter() {
-    //     let filt_data = data
-    //         .into_iter()
-    //         .filter(|m| m.category == c)
-    //         .collect::<Vec<_>>();
-
-    //     let mut s = 0;
-    //     for i in filt_data {
-    //         s += i.designator.len();
-    //     }
-    //     t += s;
-    //     st.push(Stats { label: c, value: s });
-    // }
-    // st.push(Stats {
-    //     label: Category::Total,
-    //     value: t,
-    // });
-
-    st
+    data.iter().fold(Vec::<Stats>::new(), |mut acc, i| {
+        let mut is_new = true;
+        for mut x in acc.iter_mut() {
+            if x.label == i.category {
+                x.value += 1;
+                is_new = false;
+            }
+        }
+        if is_new {
+            acc.push(Stats {
+                label: i.category.clone(),
+                value: 1,
+            });
+        }
+        acc
+    })
 }
 
 impl PartialEq for Item {
@@ -422,19 +417,5 @@ mod tests {
             assert_eq!(i.label, header_map_check.2[n].1);
             assert_eq!(i.index, header_map_check.2[n].2);
         }
-    }
-
-    #[test]
-    fn test_extra_col() {}
-    #[test]
-    fn test_merge() {
-        let len_check = vec![2, 2, 2, 2, 4, 1, 2];
-        let data: DataParser = DataParser::new("test_data/bom_merge.xlsx");
-        // let items = data.collect();
-        // assert_eq!(len_check.len(), items.len());
-        // for (n, c) in items.iter().enumerate() {
-        //     assert_eq!(c.designator.len(), len_check[n]);
-        //     println!("{:?}", c);
-        // }
     }
 }
