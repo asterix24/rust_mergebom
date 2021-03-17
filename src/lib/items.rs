@@ -1,9 +1,9 @@
-use calamine::{open_workbook_auto, DataType, Reader, Sheets};
 use lazy_static::lazy_static;
 use regex::Regex;
 
 use std::fmt;
 
+use super::load::Load;
 use super::utils::{convert_comment_to_value, detect_measure_unit, guess_category};
 
 #[derive(Debug, Clone)]
@@ -72,236 +72,182 @@ impl fmt::Debug for HeaderMap {
 }
 
 pub struct DataParser {
-    workbook: Sheets,
-    sheet_name: String,
+    load: Load,
 }
 
 impl DataParser {
-    pub fn new(filename: &str) -> DataParser {
-        println!("Parse: {}", filename);
-        let sheet_name: String;
-        let workbook = match open_workbook_auto(filename) {
-            Ok(wk) => {
-                /* Search headers in source files */
-                sheet_name = match wk.sheet_names().first() {
-                    Some(s) => s.clone(),
-                    None => panic!("unable to get sheet names"),
-                };
-                wk
-            }
-            Err(error) => panic!("Error while parsing file: {:?}", error),
-        };
-
-        println!("Sheets: {}", sheet_name);
-        DataParser {
-            workbook,
-            sheet_name,
-        }
+    pub fn new(load: Load) -> DataParser {
+        DataParser { load }
     }
 
-    pub fn parse(mut self, header_map: &Vec<HeaderMap>) -> Vec<Item> {
-        let data = self.parse_xlsx(&header_map);
+    pub fn parse(&mut self, header_map: &Vec<HeaderMap>) -> Vec<Item> {
+        let data = self.parse_data(&header_map);
         self.sets(data)
     }
 
     pub fn headers(&mut self) -> Vec<HeaderMap> {
-        let mut header_map: Vec<HeaderMap> = Vec::new();
+        let mut header_map: Vec<HeaderMap>;
         lazy_static! {
             static ref RE_NOTE: Regex = Regex::new(r"NOTE\s(.*)").unwrap();
             static ref RE_CODE: Regex = Regex::new(r"CODE\s(.*)").unwrap();
         }
 
-        match self.workbook.worksheet_range(self.sheet_name.as_str()) {
-            Some(Ok(range)) => {
-                let (rw, cl) = range.get_size();
-                let mut header_found = false;
-                for row in 0..rw {
-                    if header_found {
-                        break;
+        let mut header_found = false;
+        for row in self.load.read() {
+            for (n, col) in row.iter().enumerate() {
+                match col.to_lowercase().as_str() {
+                    "designator" => {
+                        header_found = true;
+                        header_map.push(HeaderMap {
+                            key: Header::Designator,
+                            label: String::from("Designator"),
+                            index: n,
+                        })
                     }
-                    for column in 0..cl {
-                        if let Some(DataType::String(s)) = range.get((row, column)) {
-                            match s.to_lowercase().as_str() {
-                                "designator" => {
-                                    header_found = true;
+                    "comment" => header_map.push(HeaderMap {
+                        key: Header::Comment,
+                        label: String::from("Comment"),
+                        index: n,
+                    }),
+                    "footprint" => header_map.push(HeaderMap {
+                        key: Header::Footprint,
+                        label: String::from("Footprint"),
+                        index: n,
+                    }),
+                    "description" => header_map.push(HeaderMap {
+                        key: Header::Description,
+                        label: String::from("Description"),
+                        index: n,
+                    }),
+                    "mounttechnology" | "mount_technology" => header_map.push(HeaderMap {
+                        key: Header::MountTecnology,
+                        label: String::from("Mount Technology"),
+                        index: n,
+                    }),
+                    "layer" => header_map.push(HeaderMap {
+                        key: Header::Layer,
+                        label: String::from("Layer"),
+                        index: n,
+                    }),
+                    _ => {
+                        match RE_CODE.captures(col.as_ref()) {
+                            Some(cc) => {
+                                if let Some(m) = cc.get(1).map_or(None, |m| Some(m.as_str())) {
                                     header_map.push(HeaderMap {
-                                        key: Header::Designator,
-                                        label: String::from("Designator"),
-                                        index: column,
+                                        key: Header::Extra,
+                                        index: n,
+                                        label: format!("Code {:}", m),
                                     })
-                                }
-                                "comment" => header_map.push(HeaderMap {
-                                    key: Header::Comment,
-                                    label: String::from("Comment"),
-                                    index: column,
-                                }),
-                                "footprint" => header_map.push(HeaderMap {
-                                    key: Header::Footprint,
-                                    label: String::from("Footprint"),
-                                    index: column,
-                                }),
-                                "description" => header_map.push(HeaderMap {
-                                    key: Header::Description,
-                                    label: String::from("Description"),
-                                    index: column,
-                                }),
-                                "mounttechnology" | "mount_technology" => {
-                                    header_map.push(HeaderMap {
-                                        key: Header::MountTecnology,
-                                        label: String::from("Mount Technology"),
-                                        index: column,
-                                    })
-                                }
-                                "layer" => header_map.push(HeaderMap {
-                                    key: Header::Layer,
-                                    label: String::from("Layer"),
-                                    index: column,
-                                }),
-                                _ => {
-                                    match RE_CODE.captures(s.as_ref()) {
-                                        Some(cc) => {
-                                            if let Some(m) =
-                                                cc.get(1).map_or(None, |m| Some(m.as_str()))
-                                            {
-                                                header_map.push(HeaderMap {
-                                                    key: Header::Extra,
-                                                    index: column,
-                                                    label: format!("Code {:}", m),
-                                                })
-                                            }
-                                        }
-                                        _ => (),
-                                    }
-                                    match RE_NOTE.captures(s.as_ref()) {
-                                        Some(cc) => {
-                                            if let Some(m) =
-                                                cc.get(1).map_or(None, |m| Some(m.as_str()))
-                                            {
-                                                header_map.push(HeaderMap {
-                                                    key: Header::Extra,
-                                                    index: column,
-                                                    label: format!("Note {:}", m),
-                                                })
-                                            }
-                                        }
-                                        _ => (),
-                                    }
                                 }
                             }
+                            _ => (),
+                        }
+                        match RE_NOTE.captures(col.as_ref()) {
+                            Some(cc) => {
+                                if let Some(m) = cc.get(1).map_or(None, |m| Some(m.as_str())) {
+                                    header_map.push(HeaderMap {
+                                        key: Header::Extra,
+                                        index: n,
+                                        label: format!("Note {:}", m),
+                                    })
+                                }
+                            }
+                            _ => (),
                         }
                     }
                 }
             }
-            _ => panic!("peggio.."),
         }
         header_map.sort_by_key(|m| m.key);
         println!("{:?}", header_map);
         header_map
     }
 
-    pub fn parse_xlsx(&mut self, header_map: &Vec<HeaderMap>) -> Vec<Item> {
-        let mut items: Vec<Item> = Vec::new();
+    pub fn parse_data(&mut self, header_map: &Vec<HeaderMap>) -> Vec<Item> {
+        let mut items: Vec<Item>;
 
-        /* Find data in source with column position find above */
-        if let Some(Ok(range)) = self.workbook.worksheet_range(self.sheet_name.as_str()) {
-            let (rw, _) = range.get_size();
-            for row in 0..rw {
-                let mut template = Item {
-                    unique_id: String::new(),
-                    category: Category::IVALID,
-                    base_exp: (0.0, 0),
-                    measure_unit: String::new(),
-                    designator: vec![],
-                    comment: String::new(),
-                    footprint: String::new(),
-                    description: String::new(),
-                    layer: vec![],
-                    extra: vec![],
-                };
-                let mut skip_row = false;
-                for header_label in header_map {
-                    // this row contain a header, so we should skip it.
-                    match range.get((row, header_label.index)) {
-                        Some(DataType::String(value)) => match header_label.key {
-                            Header::Designator => {
-                                if value == "Designator" || value.is_empty() {
-                                    println!("skip: [{:?}]", value);
-                                    skip_row = true;
-                                    continue;
-                                }
-                                template.designator = value
-                                    .split(",")
-                                    .map(|m| m.trim().to_string())
-                                    .collect::<Vec<_>>();
+        for row in self.load.read() {
+            /* Find data in source with column position find above */
+            let mut template = Item {
+                unique_id: String::new(),
+                category: Category::IVALID,
+                base_exp: (0.0, 0),
+                measure_unit: String::new(),
+                designator: vec![],
+                comment: String::new(),
+                footprint: String::new(),
+                description: String::new(),
+                layer: vec![],
+                extra: vec![],
+            };
 
-                                let des = template.designator.first().unwrap();
-                                template.category = guess_category(des.trim());
-                                template.measure_unit = detect_measure_unit(des.trim());
+            let mut skip_row = false;
+            for header_label in header_map {
+                match row.get(header_label.index) {
+                    Some(value) => match header_label.key {
+                        Header::Designator => {
+                            // this row contain a header, so we should skip it.
+                            if value == "Designator" || value.is_empty() {
+                                println!("skip: [{:?}]", value);
+                                skip_row = true;
+                                continue;
                             }
-                            Header::Comment => {
-                                template.comment = value.clone();
-                                template.base_exp = convert_comment_to_value(value);
-                            }
-                            Header::Description => {
-                                template.description = value.clone();
-                            }
-                            Header::Footprint => {
-                                template.footprint = value.clone();
-                            }
-                            Header::Layer | Header::MountTecnology => {
-                                template.layer.push(value.clone());
-                            }
-                            _ => {
-                                template.extra.push(ExtraCol {
-                                    label: header_label.key.clone(),
-                                    value: value.clone(),
-                                });
-                            }
-                        },
-                        Some(DataType::Int(value)) => {
+                            template.designator = value
+                                .split(",")
+                                .map(|m| m.trim().to_string())
+                                .collect::<Vec<_>>();
+
+                            let des = template.designator.first().unwrap();
+                            template.category = guess_category(des.trim());
+                            template.measure_unit = detect_measure_unit(des.trim());
+                        }
+                        Header::Comment => {
+                            template.comment = value.clone();
+                            template.base_exp = convert_comment_to_value(value);
+                        }
+                        Header::Description => {
+                            template.description = value.clone();
+                        }
+                        Header::Footprint => {
+                            template.footprint = value.clone();
+                        }
+                        Header::Layer | Header::MountTecnology => {
+                            template.layer.push(value.clone());
+                        }
+                        _ => {
                             template.extra.push(ExtraCol {
                                 label: header_label.key.clone(),
-                                value: value.to_string(),
+                                value: value.clone(),
                             });
                         }
-
-                        Some(DataType::Float(value)) => {
-                            template.extra.push(ExtraCol {
-                                label: header_label.key.clone(),
-                                value: value.to_string(),
-                            });
-                        }
-                        Some(DataType::Empty) => (),
-                        _ => println!(
-                            "Invalid data type..[{:?}]",
-                            range.get((row, header_label.index))
-                        ),
-                    }
-                }
-                if !skip_row {
-                    let mut ext_str: String = String::new();
-                    for ext in template.extra.clone() {
-                        ext_str = format!("{}{}", ext_str, ext.value);
-                    }
-
-                    let key = match template.category {
-                        Category::Connectors => {
-                            format!("{}{}{}", template.footprint, template.description, ext_str)
-                        }
-                        _ => format!(
-                            "{}{}{}{}",
-                            template.comment, template.footprint, template.description, ext_str
-                        ),
-                    };
-                    template.unique_id = key;
-                    items.push(template);
+                    },
+                    Some(Empty) => (),
+                    _ => println!("Invalid data type..",),
                 }
             }
+            if !skip_row {
+                let mut ext_str: String = String::new();
+                for ext in template.extra.clone() {
+                    ext_str = format!("{}{}", ext_str, ext.value);
+                }
+
+                let key = match template.category {
+                    Category::Connectors => {
+                        format!("{}{}{}", template.footprint, template.description, ext_str)
+                    }
+                    _ => format!(
+                        "{}{}{}{}",
+                        template.comment, template.footprint, template.description, ext_str
+                    ),
+                };
+                template.unique_id = key;
+                items.push(template);
+            }
         }
-        return items;
+        items
     }
 
-    pub fn sets(self, data: Vec<Item>) -> Vec<Item> {
+    pub fn sets(&self, data: Vec<Item>) -> Vec<Item> {
         let mut items: Vec<Item> = Vec::new();
         for row in data {
             match items.iter().position(|m| m.unique_id == row.unique_id) {
@@ -391,7 +337,7 @@ mod tests {
             ],
         );
 
-        let mut data: DataParser = DataParser::new(boms[0]);
+        let mut data: DataParser = DataParser::new(Load::new(boms[0]));
         let hdr_map: Vec<HeaderMap> = data.headers();
         assert_eq!(hdr_map.len(), header_map_check.0.len());
         for (n, i) in hdr_map.iter().enumerate() {
@@ -400,7 +346,7 @@ mod tests {
             assert_eq!(i.index, header_map_check.0[n].2);
         }
 
-        let mut data: DataParser = DataParser::new(boms[1]);
+        let mut data: DataParser = DataParser::new(Load::new(boms[1]));
         let hdr_map: Vec<HeaderMap> = data.headers();
         assert_eq!(hdr_map.len(), header_map_check.1.len());
         for (n, i) in hdr_map.iter().enumerate() {
@@ -409,7 +355,7 @@ mod tests {
             assert_eq!(i.index, header_map_check.1[n].2);
         }
 
-        let mut data: DataParser = DataParser::new(boms[2]);
+        let mut data: DataParser = DataParser::new(Load::new(boms[2]));
         let hdr_map: Vec<HeaderMap> = data.headers();
         assert_eq!(hdr_map.len(), header_map_check.2.len());
         for (n, i) in hdr_map.iter().enumerate() {

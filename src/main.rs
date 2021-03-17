@@ -2,6 +2,7 @@ use clap::{App, Arg};
 mod lib;
 use lib::items::Category;
 use lib::items::{categories, stats, DataParser, HeaderMap, Item};
+use lib::load::Load;
 use lib::outjob::OutJobXlsx;
 use lib::ASCII_LOGO;
 
@@ -22,7 +23,8 @@ fn main() {
 
     let bom = matches.values_of("BOMFile").unwrap();
     for i in bom {
-        let mut data: DataParser = DataParser::new(i);
+        let ld: Load = Load::new(i);
+        let data: DataParser = DataParser::new(ld);
         let hdr: Vec<HeaderMap> = data.headers();
         println!("-> {:?}", hdr);
 
