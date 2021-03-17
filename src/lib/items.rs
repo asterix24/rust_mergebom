@@ -1,4 +1,3 @@
-use lazy_static::lazy_static;
 use regex::Regex;
 
 use std::fmt;
@@ -67,106 +66,138 @@ pub struct HeaderMap {
 
 impl fmt::Debug for HeaderMap {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}-> {} {}\n", self.key, self.label, self.index)
+        write!(f, "{:?}-> {} {}", self.key, self.label, self.index)
     }
 }
 
 pub struct DataParser {
-    load: Load,
+    items: Vec<Item>,
+    headers: Vec<HeaderMap>,
 }
 
 impl DataParser {
-    pub fn new(load: Load) -> DataParser {
-        DataParser { load }
-    }
+    pub fn new(mut load: Load) -> DataParser {
+        let mut headers = Vec::new();
 
-    pub fn parse(&mut self, header_map: &Vec<HeaderMap>) -> Vec<Item> {
-        let data = self.parse_data(&header_map);
-        self.sets(data)
-    }
-
-    pub fn headers(&mut self) -> Vec<HeaderMap> {
-        let mut header_map: Vec<HeaderMap>;
-        lazy_static! {
-            static ref RE_NOTE: Regex = Regex::new(r"NOTE\s(.*)").unwrap();
-            static ref RE_CODE: Regex = Regex::new(r"CODE\s(.*)").unwrap();
-        }
+        let re_note = Regex::new(r"NOTE\s(.*)").unwrap();
+        let re_code = Regex::new(r"CODE\s(.*)").unwrap();
 
         let mut header_found = false;
-        for row in self.load.read() {
+        for row in load.read() {
             for (n, col) in row.iter().enumerate() {
                 match col.to_lowercase().as_str() {
                     "designator" => {
                         header_found = true;
-                        header_map.push(HeaderMap {
+                        headers.push(HeaderMap {
                             key: Header::Designator,
                             label: String::from("Designator"),
                             index: n,
                         })
                     }
-                    "comment" => header_map.push(HeaderMap {
+                    "comment" => headers.push(HeaderMap {
                         key: Header::Comment,
                         label: String::from("Comment"),
                         index: n,
                     }),
-                    "footprint" => header_map.push(HeaderMap {
+                    "footprint" => headers.push(HeaderMap {
                         key: Header::Footprint,
                         label: String::from("Footprint"),
                         index: n,
                     }),
-                    "description" => header_map.push(HeaderMap {
+                    "description" => headers.push(HeaderMap {
                         key: Header::Description,
                         label: String::from("Description"),
                         index: n,
                     }),
-                    "mounttechnology" | "mount_technology" => header_map.push(HeaderMap {
+                    "mounttechnology" | "mount_technology" => headers.push(HeaderMap {
                         key: Header::MountTecnology,
                         label: String::from("Mount Technology"),
                         index: n,
                     }),
-                    "layer" => header_map.push(HeaderMap {
+                    "layer" => headers.push(HeaderMap {
                         key: Header::Layer,
                         label: String::from("Layer"),
                         index: n,
                     }),
                     _ => {
-                        match RE_CODE.captures(col.as_ref()) {
-                            Some(cc) => {
-                                if let Some(m) = cc.get(1).map_or(None, |m| Some(m.as_str())) {
-                                    header_map.push(HeaderMap {
-                                        key: Header::Extra,
-                                        index: n,
-                                        label: format!("Code {:}", m),
-                                    })
-                                }
+                        if let Some(cc) = re_code.captures(col.as_ref()) {
+                            if let Some(m) = cc.get(1).map(|m| m.as_str()) {
+                                headers.push(HeaderMap {
+                                    key: Header::Extra,
+                                    index: n,
+                                    label: format!("Code {:}", m),
+                                })
                             }
-                            _ => (),
                         }
-                        match RE_NOTE.captures(col.as_ref()) {
-                            Some(cc) => {
-                                if let Some(m) = cc.get(1).map_or(None, |m| Some(m.as_str())) {
-                                    header_map.push(HeaderMap {
-                                        key: Header::Extra,
-                                        index: n,
-                                        label: format!("Note {:}", m),
-                                    })
-                                }
+                        if let Some(cc) = re_note.captures(col.as_ref()) {
+                            if let Some(m) = cc.get(1).map(|m| m.as_str()) {
+                                headers.push(HeaderMap {
+                                    key: Header::Extra,
+                                    index: n,
+                                    label: format!("Note {:}", m),
+                                })
                             }
-                            _ => (),
                         }
                     }
                 }
             }
+
+            if header_found {
+                break;
+            }
         }
-        header_map.sort_by_key(|m| m.key);
-        println!("{:?}", header_map);
-        header_map
+
+        headers.sort_by_key(|m| m.key);
+        println!("{:?}", headers);
+
+        let data = Self::parse_data(&mut load, &headers);
+        let items = Self::sets(data);
+
+        DataParser { headers, items }
     }
 
-    pub fn parse_data(&mut self, header_map: &Vec<HeaderMap>) -> Vec<Item> {
-        let mut items: Vec<Item>;
+    pub fn headers(&self) -> &[HeaderMap] {
+        &self.headers
+    }
 
-        for row in self.load.read() {
+    pub fn items(&self) -> &[Item] {
+        &self.items
+    }
+
+    pub fn categories(&self) -> Vec<Category> {
+        let mut cat: Vec<Category> = Vec::new();
+        for c in &self.items {
+            if !cat.contains(&c.category) {
+                cat.push(c.category.clone());
+            }
+        }
+        cat.sort();
+        cat
+    }
+
+    pub fn stats(&self) -> Vec<Stats> {
+        self.items.iter().fold(Vec::<Stats>::new(), |mut acc, i| {
+            let mut is_new = true;
+            for mut x in acc.iter_mut() {
+                if x.label == i.category {
+                    x.value += 1;
+                    is_new = false;
+                }
+            }
+            if is_new {
+                acc.push(Stats {
+                    label: i.category.clone(),
+                    value: 1,
+                });
+            }
+            acc
+        })
+    }
+
+    fn parse_data(load: &mut Load, headers: &[HeaderMap]) -> Vec<Item> {
+        let mut items = Vec::new();
+
+        for row in load.read() {
             /* Find data in source with column position find above */
             let mut template = Item {
                 unique_id: String::new(),
@@ -182,7 +213,7 @@ impl DataParser {
             };
 
             let mut skip_row = false;
-            for header_label in header_map {
+            for header_label in headers {
                 match row.get(header_label.index) {
                     Some(value) => match header_label.key {
                         Header::Designator => {
@@ -193,7 +224,7 @@ impl DataParser {
                                 continue;
                             }
                             template.designator = value
-                                .split(",")
+                                .split(',')
                                 .map(|m| m.trim().to_string())
                                 .collect::<Vec<_>>();
 
@@ -216,12 +247,11 @@ impl DataParser {
                         }
                         _ => {
                             template.extra.push(ExtraCol {
-                                label: header_label.key.clone(),
+                                label: header_label.key,
                                 value: value.clone(),
                             });
                         }
                     },
-                    Some(Empty) => (),
                     _ => println!("Invalid data type..",),
                 }
             }
@@ -247,8 +277,9 @@ impl DataParser {
         items
     }
 
-    pub fn sets(&self, data: Vec<Item>) -> Vec<Item> {
+    fn sets(data: Vec<Item>) -> Vec<Item> {
         let mut items: Vec<Item> = Vec::new();
+
         for row in data {
             match items.iter().position(|m| m.unique_id == row.unique_id) {
                 Some(cc) => {
@@ -262,38 +293,9 @@ impl DataParser {
                 _ => items.push(Item { ..row }),
             }
         }
-        return items;
-    }
-}
 
-pub fn categories(data: &Vec<Item>) -> Vec<Category> {
-    let mut cat: Vec<Category> = Vec::new();
-    for c in data {
-        if !cat.contains(&c.category) {
-            cat.push(c.category.clone());
-        }
+        items
     }
-    cat.sort();
-    cat
-}
-
-pub fn stats(data: &Vec<Item>) -> Vec<Stats> {
-    data.iter().fold(Vec::<Stats>::new(), |mut acc, i| {
-        let mut is_new = true;
-        for mut x in acc.iter_mut() {
-            if x.label == i.category {
-                x.value += 1;
-                is_new = false;
-            }
-        }
-        if is_new {
-            acc.push(Stats {
-                label: i.category.clone(),
-                value: 1,
-            });
-        }
-        acc
-    })
 }
 
 impl PartialEq for Item {

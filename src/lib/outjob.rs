@@ -14,7 +14,7 @@ impl OutJobXlsx {
             curr_row: 0,
         }
     }
-    pub fn write(mut self, headers: &Vec<HeaderMap>, data: &Vec<Item>, categories: Vec<Category>) {
+    pub fn write(mut self, headers: &[HeaderMap], data: &[Item], categories: Vec<Category>) {
         let fmt_defalt = self
             .wk
             .add_format()

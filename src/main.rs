@@ -1,7 +1,7 @@
 use clap::{App, Arg};
 mod lib;
 use lib::items::Category;
-use lib::items::{categories, stats, DataParser, HeaderMap, Item};
+use lib::items::DataParser;
 use lib::load::Load;
 use lib::outjob::OutJobXlsx;
 use lib::ASCII_LOGO;
@@ -25,12 +25,9 @@ fn main() {
     for i in bom {
         let ld: Load = Load::new(i);
         let data: DataParser = DataParser::new(ld);
-        let hdr: Vec<HeaderMap> = data.headers();
-        println!("-> {:?}", hdr);
 
-        let v: Vec<Item> = data.parse(&hdr);
-        let c: Vec<Category> = categories(&v);
-        for x in stats(&v) {
+        let c: Vec<Category> = data.categories();
+        for x in data.stats() {
             println!("->\t{:?} {}", x.label, x.value);
         }
         //dump(&v);
@@ -41,6 +38,6 @@ fn main() {
         //     println!("=> {:?}", i);
         // }
         let out = OutJobXlsx::new("merged_bom");
-        out.write(&hdr, &v, c.clone());
+        out.write(data.headers(), data.items(), c.clone());
     }
 }
